@@ -1,9 +1,9 @@
 {
     "id": "E27482BD",
-    "path": "~/Desktop/KR_Software/spareGParts/R/README.Rmd",
-    "project_path": "R/README.Rmd",
+    "path": "~/Desktop/KR_Software/spareGParts/README.Rmd",
+    "project_path": "README.Rmd",
     "type": "r_markdown",
-    "hash": "0",
+    "hash": "1396929502",
     "contents": "",
     "dirty": false,
     "created": 1754072232165.0,
@@ -20,11 +20,11 @@
         "rmdVisualModeLocation": "2:0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1754072630,
+    "lastKnownWriteTime": 1754079059,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1754072630905,
+    "last_content_update": 1754079059811,
     "read_only": false,
     "read_only_alternatives": []
 }
