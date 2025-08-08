@@ -8,3 +8,13 @@ plot(gp1)
 
 gp2 <- svecgp(X, y)
 plot(gp2)
+
+fit3 <- rvm(X, y)
+plot(fit3)
+
+
+
+
+
+
+

@@ -32,6 +32,13 @@ but without a convenient R implementation. Currently includes:
     See [here](https://github.com/katzfuss-group/scaledVecchia) for
     original implementation. I am simply packagizing the code for
     convenience with permission from Matthias Katzfuss*.
+3.  `rvm` **Relevance Vector Machine**. An implementation of the RVM
+    algorithm via Tipping 1999. The `kernlab` implementation is faster
+    (written in C++) but fails to yield probabilistic modeling. This
+    implementation allows allows for specifying a discrete prior over
+    the lengthscale parameter (and admits parallelization via
+    `mclapply`). A pre-screening LASSO step is also available to bound
+    the complexity of the algorithm to O(maxiter \* max_basis^3).
 
 ### References
 

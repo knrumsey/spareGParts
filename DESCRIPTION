@@ -10,7 +10,7 @@ Authors@R: c(
     )
   )
 Description: Miscellaneous emulation methods (mostly approximate GPs) from the literature implemented and/or packaged for convenience.
-Imports: GPfit, cluster, GpGp, GPvecchia
+Imports: GPfit, cluster, GpGp, GPvecchia, glmnet, parallel
 Suggests: knitr, rmarkdown, lhs, testthat (>= 2.1.0)
 License: BSD_3_clause + file LICENSE
 Encoding: UTF-8
