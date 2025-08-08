@@ -13,6 +13,7 @@
 #' @param tol Tolerance for early stopping of hyperparameter optimization.
 #' @param maxiter Number of iterations of EM algorithm before stopping.
 #' @param mc_cores How many cores to use (for parallelizing over various lengthscales)
+#' @param verbose Should progress be printed?
 #' @details Algorithm has complexity O(nm^2). Candidate points are greedily selected to maximize a scoring criterion (Eq. 8 in Keerthi & Chu), conditional on kernel parameters. Once a subset is obtained, the GPfit package is used to estimate kernel parameters and the process repeats.
 #' @references
 #' Tipping, Michael. "The relevance vector machine." Advances in neural information processing systems 12 (1999).
@@ -22,7 +23,7 @@
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- rvm(X, y)
 #' @export
-rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_probs=NULL, prune_thresh=1e6, drop_models=TRUE, tol=5e-3, maxiter=2000, mc_cores=1){
+rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_probs=NULL, prune_thresh=1e6, drop_models=TRUE, tol=5e-3, maxiter=2000, mc_cores=1, verbose=TRUE){
   if(sd(y) == 0) y <- y + rnorm(y, 0, 1e-6)
 
   if(is.null(lscale)){
@@ -172,11 +173,11 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500) 
     # Compute Sigma and mu (posterior covariance and mean of weights)
     keep_set <- setdiff(1:M, pruned)
     if(!(1 %in% keep_set)){
-      browser()
+      warning("somehow intercept was deleted...")
       keep_set <- c(1, keep_set)
     }
     Phi <- Phi_full[, keep_set, drop=FALSE]
-    Sigma_inv <- diag(alpha[keep_set]) + crossprod(Phi) / sigma2
+    Sigma_inv <- diag(alpha[keep_set], nrow=length(keep_set)) + crossprod(Phi) / sigma2
 
     # Compute Sigma with try-catch and increasing jitter if needed
     for (jit in c(0, 1e-8, 1e-6, 1e-4, 1e9)) {
@@ -203,7 +204,11 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500) 
     rel_change_alpha <- max(abs(alpha_new - alpha) / (abs(alpha) + .Machine$double.eps))
     rel_change_sigma <- abs(sigma2_new - sigma2) / (abs(sigma2) + .Machine$double.eps)
     if(rel_change_alpha < tol && rel_change_sigma < tol) break
-    print(max(rel_change_alpha, rel_change_sigma))
+    if(verbose){
+      if((iter %% 100) == 0){
+        cat("iteration ", iter, "\n\tmax relative change = ", max(rel_change_alpha, rel_change_sigma), "\n")
+      }
+    }
     alpha <- alpha_new
     sigma2 <- sigma2_new
   }

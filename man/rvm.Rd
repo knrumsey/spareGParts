@@ -15,7 +15,8 @@ rvm(
   drop_models = TRUE,
   tol = 0.005,
   maxiter = 2000,
-  mc_cores = 1
+  mc_cores = 1,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -40,6 +41,8 @@ rvm(
 \item{maxiter}{Number of iterations of EM algorithm before stopping.}
 
 \item{mc_cores}{How many cores to use (for parallelizing over various lengthscales)}
+
+\item{verbose}{Should progress be printed?}
 }
 \description{
 A Bayesian RVM implementation (Tipping 1999). This implementation exists only because the (much more efficient) kernlab implementation doesn't provide probabilistic predictions (or the capability to do so).
