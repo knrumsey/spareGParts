@@ -21,6 +21,7 @@
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- rvm(X, y)
+#' @export
 rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_probs=NULL, prune_thresh=1e6, drop_models=TRUE, tol=5e-3, maxiter=2000, mc_cores=1){
   if(sd(y) == 0) y <- y + rnorm(y, 0, 1e-6)
 

@@ -14,7 +14,7 @@ rvm(
   prune_thresh = 1e+06,
   drop_models = TRUE,
   tol = 0.005,
-  maxiter = 1000,
+  maxiter = 2000,
   mc_cores = 1
 )
 }
