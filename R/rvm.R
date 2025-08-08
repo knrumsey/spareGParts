@@ -181,6 +181,7 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500, 
 
     # Compute Sigma with try-catch and increasing jitter if needed
     for (jit in c(0, 1e-8, 1e-6, 1e-4, 1e9)) {
+      #if(jit == 1e9) browser()
       Sigma_inv_jit <- Sigma_inv + diag(jit, ncol(Sigma_inv))
       Sigma <- try(solve(Sigma_inv_jit), silent = TRUE)
       if (!inherits(Sigma, "try-error")) {
@@ -194,7 +195,7 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500, 
     alpha_new <- rep(1e9, M)
     alpha_new[keep_set] <- gamma / (mu^2)
     alpha_new[1] <- 1e-9 # Keep the intercept always
-    sigma2_new <- sum((y - Phi %*% mu)^2) / (N - sum(gamma))
+    sigma2_new <- max(1e-7, sum((y - Phi %*% mu)^2) / (N - sum(gamma)))
 
     # Prune step
     ind_to_prune <- which(alpha_new > prune_thresh)
@@ -216,11 +217,33 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500, 
     warning("maxiter reached before convergence was obtained.")
   }
   # Compute log marginal likelihood (see Tipping 2001, Eqn 7)
-  Phi <- Phi_full
-  C <- sigma2 * diag(N) + tcrossprod(Phi, Phi * rep(1/alpha, each = nrow(Phi)))
-  cholC <- chol(C)
+  #Phi <- Phi_full
+  Phi <- Phi_full[, keep_set, drop=FALSE]
+  C <- sigma2 * diag(N) + tcrossprod(Phi, Phi * rep(1/alpha[keep_set], each = nrow(Phi)))
+  cholC <- try(chol(C), silent = TRUE)
+  if(inherits(cholC, "try-error")){
+    #browser()
+    flag <- TRUE
+    scale <- sigma2
+    while(flag){
+      scale <- scale * 100
+      cholC <- try(chol(C+ scale*diag(N)), silent=TRUE)
+      if(!inherits(cholC, "try-error")) flag <- FALSE
+    }
+  }
   logdetC <- 2*sum(log(diag(cholC)))
-  log_marginal_lik <- -0.5 * (N*log(2*pi) + logdetC + t(y) %*% solve(C, y))
+  sCy <- try(solve(C, y), silent=TRUE)
+  if(inherits(sCy, "try-error")){
+    #browser()
+    flag <- TRUE
+    scale <- sigma2
+    while(flag){
+      scale <- scale * 100
+      sCy <- try(solve(C + scale*diag(N), y), silent=TRUE)
+      if(!inherits(sCy, "try-error")) flag <- FALSE
+    }
+  }
+  log_marginal_lik <- -0.5 * (N*log(2*pi) + logdetC + t(y) %*% sCy)
 
   list(mu = mu, Sigma = Sigma, alpha = alpha, sigma2 = sigma2, keep_set=keep_set,
        log_marginal_lik = as.numeric(log_marginal_lik), iter=iter)
