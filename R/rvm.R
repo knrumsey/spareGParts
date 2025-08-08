@@ -73,7 +73,7 @@ rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_p
 
       #Phi[[i]] <- make_Phi(X, lscale=lscale[i])
       # Do lasso here?
-      fit <- optimize_hyperpars(Phi[[i]], y, prune_thresh, tol, maxiter)
+      fit <- optimize_hyperpars(Phi[[i]], y, prune_thresh, tol, maxiter, verbose)
       fit$selected <- selected
       Fits[[i]] <- fit
     }
@@ -161,7 +161,7 @@ make_Phi <- function(X, centers = NULL, kernel = rbf_kernel, lscale = 0.1) {
 }
 
 
-optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500) {
+optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500, verbose=TRUE){
   N <- nrow(Phi)
   M <- ncol(Phi)
   pruned <- NULL
