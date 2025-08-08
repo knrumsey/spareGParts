@@ -1,5 +1,5 @@
 ---
-title: "spareGParts"
+title: "spareGParts: Miscellaneous Emulation Methods"
 output: github_document
 ---
 

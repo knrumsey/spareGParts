@@ -1,4 +1,4 @@
-spareGParts
+spareGParts: Miscellaneous Emulation Methods
 ================
 
 [![License: BSD
@@ -33,14 +33,21 @@ but without a convenient R implementation. Currently includes:
     original implementation. I am simply packagizing the code for
     convenience with permission from Matthias Katzfuss*.
 3.  `rvm` **Relevance Vector Machine**. An implementation of the RVM
-    algorithm via Tipping 1999. The `kernlab` implementation is faster
+    algorithm via Tipping 2001. The `kernlab` implementation is faster
     (written in C++) but fails to yield probabilistic modeling. This
     implementation allows allows for specifying a discrete prior over
     the lengthscale parameter (and admits parallelization via
     `mclapply`). A pre-screening LASSO step is also available to bound
     the complexity of the algorithm to O(maxiter \* max_basis^3).
+    Posterior probabilities are given by
+    $$p(\ell_j | {\bf X, y}) \propto p(\ell_j) \max_{{\bf \alpha}, \sigma^2}p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$$
+    where $p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$ is given by
+    equation 7 in Tipping (2001).
 
 ### References
+
+Tipping, Michael E. “Sparse Bayesian learning and the relevance vector
+machine.” Journal of machine learning research 1.Jun (2001): 211-244.
 
 Keerthi, Sathiya, and Wei Chu. “A matching pursuit approach to sparse
 gaussian process regression.” Advances in neural information processing
