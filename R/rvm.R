@@ -171,11 +171,15 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500) 
   for(iter in 1:maxiter){
     # Compute Sigma and mu (posterior covariance and mean of weights)
     keep_set <- setdiff(1:M, pruned)
+    if(!(1 %in% keep_set)){
+      browser()
+      keep_set <- c(1, keep_set)
+    }
     Phi <- Phi_full[, keep_set, drop=FALSE]
     Sigma_inv <- diag(alpha[keep_set]) + crossprod(Phi) / sigma2
 
     # Compute Sigma with try-catch and increasing jitter if needed
-    for (jit in c(0, 1e-8, 1e-6, 1e-4)) {
+    for (jit in c(0, 1e-8, 1e-6, 1e-4, 1e9)) {
       Sigma_inv_jit <- Sigma_inv + diag(jit, ncol(Sigma_inv))
       Sigma <- try(solve(Sigma_inv_jit), silent = TRUE)
       if (!inherits(Sigma, "try-error")) {
@@ -188,6 +192,7 @@ optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500) 
     # Update alpha and sigma2
     alpha_new <- rep(1e9, M)
     alpha_new[keep_set] <- gamma / (mu^2)
+    alpha_new[1] <- 1e-9 # Keep the intercept always
     sigma2_new <- sum((y - Phi %*% mu)^2) / (N - sum(gamma))
 
     # Prune step
