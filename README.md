@@ -16,9 +16,6 @@ To install this package, use
 devtools::install_github("knrumsey/spareGParts")
 ```
 
-The `README.Rmd` file can be knit locally for proper rendering of the
-equations. Will add a link here if I ever write a short paper for this.
-
 ### Description
 
 The `spareGParts` R package implements and/or packages several emulation
