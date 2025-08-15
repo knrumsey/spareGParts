@@ -270,7 +270,7 @@ gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2){
 
   # Numerically stable solve
   # Attempt to solve with increasing jitter values
-  jitter_values <- c(0, 1e-9, 1e-6, 1e-3)
+  jitter_values <- c(0, 1e-7, 1e-4, 1e-1)
   alpha <- NULL
   success <- FALSE
 
@@ -280,7 +280,7 @@ gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2){
       Kj <- Kj + diag(j, nrow(Kj))
     }
 
-    attempt <- try(solve(Kj, b), silent = TRUE)  # Replace 'b' with your RHS
+    attempt <- try(solve(Kj, y_train), silent = TRUE)  # Replace 'b' with your RHS
     if (!inherits(attempt, "try-error") && all(is.finite(attempt))) {
       alpha <- attempt
       success <- TRUE
@@ -288,7 +288,7 @@ gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2){
     }
   }
   mu <- as.numeric(t(Ks) %*% alpha)
-  v <- solve(K, Ks)     # (n x 1)
+  v <- solve(Kj, Ks)     # (n x 1)
   var <- as.numeric(Kss - t(Ks) %*% v + tau2)
   var <- max(var, 1e-10) # prevent negative variance
   return(list(mean = mu, variance = var))
