@@ -55,7 +55,7 @@ bcmgp <- function(X, y,
   X_list <- y_list <- list()
   for(m in seq_len(M)){
     ind <- which(clust == m)
-    X_list[[m]] <- X[ind,]
+    X_list[[m]] <- X[ind,,drop=FALSE]
     y_list[[m]] <- y_std[ind]
   }
   params <- fit_gp_shared_hypers(X_list, y_list,
@@ -269,7 +269,24 @@ gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2){
   Kss <- sigma2 # rbf kernel at same point is sigma2
 
   # Numerically stable solve
-  alpha <- solve(K, y_train)
+  # Attempt to solve with increasing jitter values
+  jitter_values <- c(0, 1e-9, 1e-6, 1e-3)
+  alpha <- NULL
+  success <- FALSE
+
+  for (j in jitter_values) {
+    Kj <- K
+    if (j > 0) {
+      Kj <- Kj + diag(j, nrow(Kj))
+    }
+
+    attempt <- try(solve(Kj, b), silent = TRUE)  # Replace 'b' with your RHS
+    if (!inherits(attempt, "try-error") && all(is.finite(attempt))) {
+      alpha <- attempt
+      success <- TRUE
+      break
+    }
+  }
   mu <- as.numeric(t(Ks) %*% alpha)
   v <- solve(K, Ks)     # (n x 1)
   var <- as.numeric(Kss - t(Ks) %*% v + tau2)
