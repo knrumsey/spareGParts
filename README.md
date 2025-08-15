@@ -43,6 +43,12 @@ but without a convenient R implementation. Currently includes:
     $$p(\ell_j | {\bf X, y}) \propto p(\ell_j) \max_{{\bf \alpha}, \sigma^2}p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$$
     where $p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$ is given by
     equation 7 in Tipping (2001).
+4.  `bcmgp` **Bayesian Committee Machine**. An implementation of the BCM
+    given by Tresp (2000) and the robust BCM of Deisenroth and Ng (2015)
+    (depending on `expert_weight` argument). By default, a modified
+    partition around medioids (PAM) algorithm is use to obtain
+    $M = \lfloor 2\sqrt{n}\rfloor$ contiguous partitions. Complexity is
+    O(nM^2).
 
 ### References
 
