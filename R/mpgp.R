@@ -10,6 +10,7 @@
 #' @param sig2 Initial sigma squared value for Gaussian kernel
 #' @param ell A vector (or scalar for isotropic kernel) of initial lengthscales.
 #' @param loops Number of times do we loop between subset and fitting step (see details).
+#' @param p_vech Cutoff for switching to Vecchia approx. E.g., for \code{p = ncol(X) <= p_vech} we use \code{GP_fit} package for GP fitting, and we use \code{GpGp} otherwise.
 #' @param m_scale Multiplicative scaling factor for the subset size at each new iteration
 #' @param verbose Logical.
 #' @param visualize Generates a "movie" showing the selection process on the first two columns. Default of 0 indicates no visualization. Non-zero values indicates the frame rate in seconds (recommend 0.1). This is not sophisticated.
@@ -33,7 +34,7 @@ mpgp <- function(X, y, m=NULL,
                       cache_size=100,
                       refresh_rate=0.59,
                       sig2=NULL, ell=NULL,
-                      loops=2, m_scale=1.5,
+                      loops=2, p_vech=20, m_scale=1.5,
                       verbose=TRUE,
                       visualize=0, ...){
   if(var(y) == 0){
@@ -151,12 +152,23 @@ mpgp <- function(X, y, m=NULL,
 
   X_sub <- X[SoD_set,,drop=FALSE]
   y_sub <- y[SoD_set]
-  fit <- GPfit::GP_fit(X_sub, y_sub,
-                corr=list(type="exponential", power=2),
-                ...)
-  fit$ell <- 10^(-fit$beta/2) * 0.70711
-  fit$Xfull <- X
-  fit$yfull <- y
+
+  if(ncol(X) <= p_vech){
+    fit <- GPfit::GP_fit(X_sub, y_sub,
+                         corr=list(type="exponential", power=2),
+                         ...)
+    fit$ell <- 10^(-fit$beta/2) * 0.70711
+    fit$Xfull <- X
+    fit$yfull <- y
+    fit$type <- "GPfit"
+  }else{
+    fit <- GpGp::fit_model(y_sub, X_sub, X=matrix(rep(1, nrow(X_sub)), ncol=1), silent=TRUE)
+    fit$ell <- fit$covparms[2]
+    fit$Xfull <- X
+    fit$yfull <- y
+    fit$type <- "GpGp"
+  }
+
 
   # Either iterate or return
   if(loops == 1){
@@ -164,7 +176,7 @@ mpgp <- function(X, y, m=NULL,
     return(fit)
   }else{
     return(mpgp(X, y, round(m * m_scale), round(m * cache_size), refresh_rate,
-                               fit$sig2, fit$ell, loops-1, m_scale,# Recursive stuff
+                               fit$sig2, fit$ell, loops-1, p_vech, m_scale,# Recursive stuff
                                verbose, visualize, ...))
   }
 }
@@ -249,11 +261,16 @@ predict.mpgp <- function(object, newdata=NULL, samples=1000){
     newdata <- object$Xfull
   }
 
-  class(object) <- c("GP")
-  out <- GPfit::predict.GP(object, newdata)
-  preds <- matrix(NA, nrow=samples, ncol=nrow(newdata))
-  for(i in 1:nrow(newdata)){
-    preds[,i] <- out$Y_hat[i] + sqrt(out$MSE[i]) * rnorm(samples, 0, 1)
+  if(fit$type == "GPfit"){
+    class(object) <- c("GP")
+    out <- GPfit::predict.GP(object, newdata)
+    preds <- matrix(NA, nrow=samples, ncol=nrow(newdata))
+    for(i in 1:nrow(newdata)){
+      preds[,i] <- out$Y_hat[i] + sqrt(out$MSE[i]) * rnorm(samples, 0, 1)
+    }
+  }else{
+    preds <- GpGp::cond_sim(fit, newdata, rep(1, nrow(newdata)), nsims=samples)
+    preds <- t(preds)
   }
   return(preds)
 }

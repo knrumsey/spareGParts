@@ -13,6 +13,7 @@ mpgp(
   sig2 = NULL,
   ell = NULL,
   loops = 2,
+  p_vech = 20,
   m_scale = 1.5,
   verbose = TRUE,
   visualize = 0,
@@ -35,6 +36,8 @@ mpgp(
 \item{ell}{A vector (or scalar for isotropic kernel) of initial lengthscales.}
 
 \item{loops}{Number of times do we loop between subset and fitting step (see details).}
+
+\item{p_vech}{Cutoff for switching to Vecchia approx. E.g., for \code{p = ncol(X) <= p_vech} we use \code{GP_fit} package for GP fitting, and we use \code{GpGp} otherwise.}
 
 \item{m_scale}{Multiplicative scaling factor for the subset size at each new iteration}
 
