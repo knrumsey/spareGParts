@@ -7,6 +7,8 @@ spareGParts: Miscellaneous Emulation Methods
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
+<img src="inst/logos/spareGParts.png" width="25%" />
+
 ### Installation
 
 To install this package, use
@@ -44,7 +46,7 @@ but without a convenient R implementation. Currently includes:
     given by Tresp (2000) and the robust BCM of Deisenroth and Ng (2015)
     (depending on `expert_weight` argument). By default, a modified
     partition around medioids (PAM) algorithm is use to obtain
-    $M = \lfloor 2\sqrt{n}\rfloor$ contiguous partitions. Complexity is
+    $M = \lfloor \sqrt{n}/2\rfloor$ contiguous partitions. Complexity is
     O(nM^2).
 
 ### References

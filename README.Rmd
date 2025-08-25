@@ -17,6 +17,10 @@ library(lhs)
 ```
 
 
+```{r, eval=TRUE, echo=FALSE, fig.cap="", out.width='25%'}
+knitr::include_graphics("inst/logos/spareGParts.png")
+```
+
 ### Installation
 
 To install this package, use
