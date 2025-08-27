@@ -261,7 +261,7 @@ predict.mpgp <- function(object, newdata=NULL, samples=1000){
     newdata <- object$Xfull
   }
 
-  if(fit$type == "GPfit"){
+  if(object$type == "GPfit"){
     class(object) <- c("GP")
     out <- GPfit::predict.GP(object, newdata)
     preds <- matrix(NA, nrow=samples, ncol=nrow(newdata))
