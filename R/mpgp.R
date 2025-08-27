@@ -269,7 +269,7 @@ predict.mpgp <- function(object, newdata=NULL, samples=1000){
       preds[,i] <- out$Y_hat[i] + sqrt(out$MSE[i]) * rnorm(samples, 0, 1)
     }
   }else{
-    preds <- GpGp::cond_sim(fit, newdata, rep(1, nrow(newdata)), nsims=samples)
+    preds <- GpGp::cond_sim(object, newdata, rep(1, nrow(newdata)), nsims=samples)
     preds <- t(preds)
   }
   return(preds)
