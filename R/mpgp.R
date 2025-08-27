@@ -54,7 +54,7 @@ mpgp <- function(X, y, m=NULL,
   if(is.null(m)){
     m <- max(50, floor(sqrt(n)))
   }
-  m <- min(m, 1200)
+  m <- min(n-1, m, 1200)
 
   cache_size <- min(cache_size, m/2)
   kappa <- ceiling(cache_size * refresh_rate)
