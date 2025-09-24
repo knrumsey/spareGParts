@@ -56,7 +56,7 @@ mpgp <- function(X, y, m=NULL,
   }
   m <- min(n-1, m, 1200)
 
-  cache_size <- min(cache_size, m/2)
+  cache_size <- min(n-1, cache_size, m/2)
   kappa <- ceiling(cache_size * refresh_rate)
 
   if(verbose){
@@ -124,7 +124,8 @@ mpgp <- function(X, y, m=NULL,
 
     # Sample new indices
     candidates <- setdiff(1:n, union(tmp_set, SoD_set))
-    new_ind <- sample(candidates, kappa)
+    kappa2 <- min(kappa, length(candidates)) # hunting a bug
+    new_ind <- sample(candidates, kappa2)
     tmp_set[1:kappa] <- new_ind
 
     # Calculate new K_i values
@@ -223,7 +224,7 @@ delta_i <- function(K_i, y, K_I = NULL, alpha_I = NULL, sigma2 = 1, tilde_ki = N
 cheap_lengthscale <- function(X, frac = 0.05){
   n  <- nrow(X)
   d  <- ncol(X)
-  r  <- min(500, max(30, round(frac * n)))
+  r  <- min(500, max(30, round(frac * n)),)
   idx <- sample(n, r)
 
   Xsub <- X[idx, , drop = FALSE]

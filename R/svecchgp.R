@@ -183,8 +183,6 @@ svecgp <- function(X, y,ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
 
 
 
-
-
 #######   prediction   ########
 
 #' prediction using scaled Vecchia, using output from fit_scaled()
@@ -289,7 +287,7 @@ predict.svecgp <- function(object, newdata=NULL,
       NN_pred=NN[NN>n_obs]-n_obs
 
       # (co-)variances
-      K=get(covfun_name)(covparms,locs_all[c(NN,i+n_obs),])
+      K=get(covfun_name, envir = asNamespace("GpGp"))(covparms,locs_all[c(NN,i+n_obs),])
       #cl=t(chol(K))
       cl <- tryCatch(
         t(chol(K)),
@@ -348,7 +346,7 @@ predict.svecgp <- function(object, newdata=NULL,
       NN=NNarray[i,]
 
       # (co-)variances
-      K=get(covfun_name)(covparms,rbind(locs_obs[NN,],locs_pred[i,]))
+      K=get(covfun_name, envir= asNamespace("GpGp"))(covparms,rbind(locs_obs[NN,],locs_pred[i,]))
       cl=t(chol(K))
 
       # prediction
@@ -417,8 +415,6 @@ order_maxmin_pred<-function(locs, locs_pred,refine=FALSE){
 
   return(list(ord=ord, ord_pred=ord_pred))
 }
-
-
 
 
 #######   find NN for prediction locations   ########
