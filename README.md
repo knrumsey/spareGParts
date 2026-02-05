@@ -48,6 +48,12 @@ but without a convenient R implementation. Currently includes:
     partition around medioids (PAM) algorithm is use to obtain
     $M = \lfloor \sqrt{n}/2\rfloor$ contiguous partitions. Complexity is
     O(nM^2).
+5.  `gpbss` **GP Controlled B-Spline Surfaces**. An implementation of
+    the GPBSS algorithm of Li et al (2026). Uses AIC to identify a
+    suitable B-spline structure, and the coefficients are estimated
+    under a GP prior. Complexity is $O(n + \prod_{i=1}^p m_i^3)$ where
+    $m_i$ is the number of knots along the ith input direction.
+    Implementation may not be optimized.
 
 ### References
 
@@ -74,6 +80,9 @@ Simulation Data, Technometrics, 53(4), 366 - 378.
 Katzfuss, Matthias, Joseph Guinness, and Earl Lawrence. “Scaled Vecchia
 approximation for fast computer-model emulation.” SIAM/ASA Journal on
 Uncertainty Quantification 10.2 (2022): 537-554.
+
+Li, Y., Tian, Y., Mo, H., & Du, S. (2026). Gaussian Process Controlled
+B-Spline Surface. INFORMS Journal on Data Science.
 
 ### Copyright
 

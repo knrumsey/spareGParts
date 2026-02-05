@@ -42,6 +42,7 @@ The `spareGParts` R package implements and/or packages several emulation techniq
   $$p(\ell_j | {\bf X, y}) \propto p(\ell_j) \max_{{\bf \alpha}, \sigma^2}p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$$
 where $p({\bf y} | \ell_j, {\bf\alpha}, \sigma^2)$ is given by equation 7 in Tipping (2001). 
   4. `bcmgp` **Bayesian Committee Machine**. An implementation of the BCM given by Tresp (2000) and the robust BCM of Deisenroth and Ng (2015) (depending on `expert_weight` argument). By default, a modified partition around medioids (PAM) algorithm is use to obtain $M = \lfloor \sqrt{n}/2\rfloor$ contiguous partitions. Complexity is O(nM^2).
+  5. `gpbss` **GP Controlled B-Spline Surfaces**. An implementation of the GPBSS algorithm of Li et al (2026). Uses AIC to identify a suitable B-spline structure, and the coefficients are estimated under a GP prior. Complexity is $O(n + \prod_{i=1}^p m_i^3)$ where $m_i$ is the number of knots along the ith input direction. Implementation may not be optimized. 
 
 
 ### References
@@ -56,6 +57,8 @@ Chalupka, Krzysztof, Christopher KI Williams, and Iain Murray. "A framework for 
 Ranjan, P., Haynes, R., and Karsten, R. (2011). A Computationally Stable Approach to Gaussian Process Interpolation of Deterministic Computer Simulation Data, Technometrics, 53(4), 366 - 378.
 
 Katzfuss, Matthias, Joseph Guinness, and Earl Lawrence. "Scaled Vecchia approximation for fast computer-model emulation." SIAM/ASA Journal on Uncertainty Quantification 10.2 (2022): 537-554.
+
+Li, Y., Tian, Y., Mo, H., & Du, S. (2026). Gaussian Process Controlled B-Spline Surface. INFORMS Journal on Data Science.
 
 
 ### Copyright
