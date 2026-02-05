@@ -18,7 +18,7 @@
 #' @param degree Integer spline degree used in \code{splines::bs}. Default is 3
 #'   (cubic splines).
 #' @param mean_fn Mean function specification. Either \code{"linear"} (uses
-#'   \code{F = X} with no intercept) or \code{"none"} (no explicit mean function).
+#'   \code{Fmat = X} with no intercept) or \code{"none"} (no explicit mean function).
 #'   Intercepts are handled implicitly through the spline basis.
 #' @param tau Nonnegative scalar specifying the noise-to-signal ratio
 #'   \eqn{\tau = \delta} in the model. The observation noise variance is
@@ -84,7 +84,7 @@
 #'
 #' @export
 gpbss <- function(X, y,
-                      m_min = 3L,
+                      m_min = 4L,
                       m_max = 20L,
                       degree = 3L,
                       mean_fn = c("none", "linear"),
@@ -128,12 +128,12 @@ gpbss <- function(X, y,
 
   if (!is.numeric(tau) || length(tau) != 1L || tau < 0) stop("tau must be a nonnegative scalar.", call. = FALSE)
 
-  ## ---- mean/trend design F (NO intercept) ----
+  ## ---- mean/trend design Fmat (NO intercept) ----
   if (mean_fn == "linear") {
-    F <- as.matrix(X)
-    colnames(F) <- paste0("x", seq_len(p))
+    Fmat <- as.matrix(X)
+    colnames(Fmat) <- paste0("x", seq_len(p))
   } else {
-    F <- matrix(numeric(0), nrow = n, ncol = 0)
+    Fmat <- matrix(numeric(0), nrow = n, ncol = 0)
   }
 
   ## ---- default psi_init and bounds ----
@@ -263,7 +263,7 @@ gpbss <- function(X, y,
         R_fun_try <- make_R_fun(m_eff_try)
 
         fit_try <- fit_gpbss_profile(
-          y = y, U = U_try, F = F, tau = tau, R_fun = R_fun_try,
+          y = y, U = U_try, Fmat = Fmat, tau = tau, R_fun = R_fun_try,
           psi_init = psi_warm,
           method = method,
           lower = lower, upper = upper,
@@ -332,7 +332,7 @@ gpbss <- function(X, y,
   R_fun <- make_R_fun(m_eff)
 
   fit <- fit_gpbss_profile(
-    y = y, U = U, F = F, tau = tau, R_fun = R_fun,
+    y = y, U = U, Fmat = Fmat, tau = tau, R_fun = R_fun,
     psi_init = psi_warm,
     method = method,
     lower = lower, upper = upper,
@@ -356,7 +356,7 @@ gpbss <- function(X, y,
     m_eff = m_eff,
     M = M,
     B_list = B_list,
-    F = F,
+    Fmat = Fmat,
     U = U,
     R_fun = R_fun,
     fit = fit,
@@ -384,7 +384,7 @@ gpbss <- function(X, y,
 #' @param psi Numeric vector of hyperparameters (passed to \code{R_fun}).
 #' @param y Numeric response vector (length n).
 #' @param U Numeric matrix (n x M) tensor-product spline basis (or any basis).
-#' @param F Numeric matrix (n x q) mean/trend design (e.g., intercept-only or linear).
+#' @param Fmat Numeric matrix (n x q) mean/trend design (e.g., intercept-only or linear).
 #' @param tau Nonnegative scalar noise-to-signal ratio. Noise variance is \eqn{\sigma^2\tau}.
 #' @param R_fun Function taking \code{psi} and returning either:
 #'   (i) an MxM matrix \code{R}, or
@@ -405,12 +405,12 @@ gpbss <- function(X, y,
 #' R_fun <- function(psi) diag(1, 10)
 #' n <- 50; M <- 10
 #' U <- matrix(rnorm(n*M), n, M)
-#' F <- cbind(1)
+#' Fmat <- cbind(1)
 #' y <- rnorm(n)
-#' profile_loglik_gpbss(psi = numeric(0), y, U, F, tau = 0.1, R_fun = R_fun)
+#' profile_loglik_gpbss(psi = numeric(0), y, U, Fmat, tau = 0.1, R_fun = R_fun)
 #'
 #' @export
-profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
+profile_loglik_gpbss <- function(psi, y, U, Fmat, tau, R_fun,
                                  jitter = 1e-8,
                                  sigma2_df = c("n", "n-q"),
                                  return_details = FALSE) {
@@ -418,14 +418,14 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
   sigma2_df <- match.arg(sigma2_df)
 
   ## ---- checks ----
-  if (is.null(y) || is.null(U) || is.null(F)) stop("y, U, and F must be provided.", call. = FALSE)
+  if (is.null(y) || is.null(U) || is.null(Fmat)) stop("y, U, and Fmat must be provided.", call. = FALSE)
   y <- as.numeric(y)
   if (!is.matrix(U)) U <- as.matrix(U)
-  if (!is.matrix(F)) F <- as.matrix(F)
+  if (!is.matrix(Fmat)) Fmat <- as.matrix(Fmat)
 
   n <- length(y)
   if (nrow(U) != n) stop("nrow(U) must equal length(y).", call. = FALSE)
-  if (nrow(F) != n) stop("nrow(F) must equal length(y).", call. = FALSE)
+  if (nrow(Fmat) != n) stop("nrow(Fmat) must equal length(y).", call. = FALSE)
   if (!is.numeric(tau) || length(tau) != 1L || tau < 0) stop("tau must be a nonnegative scalar.", call. = FALSE)
 
   ## ---- build R(psi) ----
@@ -469,7 +469,7 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
 
   ## ---- GLS beta_hat ----
   # beta_hat = (F' S^{-1} F)^{-1} F' S^{-1} y
-  q <- ncol(F)
+  q <- ncol(Fmat)
 
   Sinv_y <- solve_Sigma0(y)
 
@@ -477,10 +477,10 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
     beta_hat <- numeric(0)
     r <- y
   } else {
-    Sinv_F <- solve_Sigma0(F)  # n x q
+    Sinv_F <- solve_Sigma0(Fmat)  # n x q
 
-    Ft_Sinv_F <- crossprod(F, Sinv_F)  # q x q
-    Ft_Sinv_y <- crossprod(F, Sinv_y)  # q x 1
+    Ft_Sinv_F <- crossprod(Fmat, Sinv_F)  # q x q
+    Ft_Sinv_y <- crossprod(Fmat, Sinv_y)  # q x 1
 
     # Solve (Ft_Sinv_F) beta = Ft_Sinv_y
     ridge <- 1e-10
@@ -492,7 +492,7 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
       stop("Failed to solve for beta_hat; Ft_Sinv_F may be singular.", call. = FALSE)
     }
 
-    r <- y - drop(F %*% beta_hat)
+    r <- y - drop(Fmat %*% beta_hat)
   }
 
   Sinv_r <- solve_Sigma0(r)
@@ -539,7 +539,7 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
 #'
 #' @param y Numeric response vector (length n).
 #' @param U Numeric matrix (n x M) tensor-product spline basis.
-#' @param F Numeric matrix (n x q) mean/trend design.
+#' @param Fmat Numeric matrix (n x q) mean/trend design.
 #' @param tau Nonnegative scalar noise-to-signal ratio. (For now treated as fixed.)
 #' @param R_fun Function mapping \code{psi} to an MxM prior covariance \code{R(psi)}.
 #' @param psi_init Numeric vector initial guess for \code{psi}.
@@ -554,7 +554,7 @@ profile_loglik_gpbss <- function(psi, y, U, F, tau, R_fun,
 #'   \code{logLik}, \code{optim}, and the fixed \code{tau}.
 #'
 #' @export
-fit_gpbss_profile <- function(y, U, F, tau, R_fun,
+fit_gpbss_profile <- function(y, U, Fmat, tau, R_fun,
                               psi_init,
                               method = "L-BFGS-B",
                               lower = NULL, upper = NULL,
@@ -571,7 +571,7 @@ fit_gpbss_profile <- function(y, U, F, tau, R_fun,
   obj_fn <- function(psi) {
     # optim minimizes; we maximize logLik
     ll <- profile_loglik_gpbss(
-      psi = psi, y = y, U = U, F = F, tau = tau, R_fun = R_fun,
+      psi = psi, y = y, U = U, Fmat = Fmat, tau = tau, R_fun = R_fun,
       jitter = jitter, sigma2_df = sigma2_df, return_details = FALSE
     )
     if (!is.finite(ll)) return(1e30)
@@ -597,7 +597,7 @@ fit_gpbss_profile <- function(y, U, F, tau, R_fun,
 
   # Recompute details at optimum
   dets <- profile_loglik_gpbss(
-    psi = opt$par, y = y, U = U, F = F, tau = tau, R_fun = R_fun,
+    psi = opt$par, y = y, U = U, Fmat = Fmat, tau = tau, R_fun = R_fun,
     jitter = jitter, sigma2_df = sigma2_df, return_details = TRUE
   )
 
@@ -647,7 +647,7 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
   y <- object$y
   X <- object$X
   U_train <- object$U
-  F_train <- object$F
+  F_train <- object$Fmat
   tau <- object$tau
   sigma2_hat <- as.numeric(fit$sigma2_hat)
   beta_hat <- as.numeric(fit$beta_hat)
@@ -664,7 +664,7 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
     F_star <- matrix(numeric(0), nrow = n_test, ncol = 0)
   } else {
     F_star <- as.matrix(newdata)
-    if (ncol(F_star) != ncol(F_train)) stop("F dimension mismatch.", call. = FALSE)
+    if (ncol(F_star) != ncol(F_train)) stop("Fmat dimension mismatch.", call. = FALSE)
   }
 
   # --- evaluate 1D spline bases at newdata using training bs() attributes ---

@@ -7,7 +7,7 @@
 fit_gpbss_profile(
   y,
   U,
-  F,
+  Fmat,
   tau,
   R_fun,
   psi_init,
@@ -25,7 +25,7 @@ fit_gpbss_profile(
 
 \item{U}{Numeric matrix (n x M) tensor-product spline basis.}
 
-\item{F}{Numeric matrix (n x q) mean/trend design.}
+\item{Fmat}{Numeric matrix (n x q) mean/trend design.}
 
 \item{tau}{Nonnegative scalar noise-to-signal ratio. (For now treated as fixed.)}
 

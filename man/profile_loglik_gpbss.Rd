@@ -8,7 +8,7 @@ profile_loglik_gpbss(
   psi,
   y,
   U,
-  F,
+  Fmat,
   tau,
   R_fun,
   jitter = 1e-08,
@@ -23,7 +23,7 @@ profile_loglik_gpbss(
 
 \item{U}{Numeric matrix (n x M) tensor-product spline basis (or any basis).}
 
-\item{F}{Numeric matrix (n x q) mean/trend design (e.g., intercept-only or linear).}
+\item{Fmat}{Numeric matrix (n x q) mean/trend design (e.g., intercept-only or linear).}
 
 \item{tau}{Nonnegative scalar noise-to-signal ratio. Noise variance is \eqn{\sigma^2\tau}.}
 
@@ -63,8 +63,8 @@ and uses a Cholesky factorization. That is correct but not scalable for large n/
 R_fun <- function(psi) diag(1, 10)
 n <- 50; M <- 10
 U <- matrix(rnorm(n*M), n, M)
-F <- cbind(1)
+Fmat <- cbind(1)
 y <- rnorm(n)
-profile_loglik_gpbss(psi = numeric(0), y, U, F, tau = 0.1, R_fun = R_fun)
+profile_loglik_gpbss(psi = numeric(0), y, U, Fmat, tau = 0.1, R_fun = R_fun)
 
 }

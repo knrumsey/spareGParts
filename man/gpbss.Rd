@@ -7,7 +7,7 @@
 gpbss(
   X,
   y,
-  m_min = 3L,
+  m_min = 4L,
   m_max = 20L,
   degree = 3L,
   mean_fn = c("none", "linear"),
@@ -41,7 +41,7 @@ B-spline basis functions per dimension allowed during SKNS.}
 (cubic splines).}
 
 \item{mean_fn}{Mean function specification. Either \code{"linear"} (uses
-\code{F = X} with no intercept) or \code{"none"} (no explicit mean function).
+\code{Fmat = X} with no intercept) or \code{"none"} (no explicit mean function).
 Intercepts are handled implicitly through the spline basis.}
 
 \item{tau}{Nonnegative scalar specifying the noise-to-signal ratio
