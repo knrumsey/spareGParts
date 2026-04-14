@@ -2,7 +2,7 @@
 % Please edit documentation in R/mpgp.R
 \name{mpgp}
 \alias{mpgp}
-\title{Matching Pursuit GP}
+\title{Matching Pursuit GP (new)}
 \usage{
 mpgp(
   X,
@@ -13,7 +13,7 @@ mpgp(
   sig2 = NULL,
   ell = NULL,
   loops = 2,
-  p_vech = 20,
+  p_vech = 100,
   m_scale = 1.5,
   verbose = TRUE,
   visualize = 0,
@@ -23,46 +23,36 @@ mpgp(
 \arguments{
 \item{X}{A dataframe or matrix of predictors scaled to be between 0 and 1}
 
-\item{y}{a reponse vector of length n}
+\item{y}{A response vector of length n}
 
-\item{m}{Subset size for first loop. Successive iterations scale the subset size by \code{m_scale}.}
+\item{m}{Subset size for first loop. Successive iterations scale the subset
+size by \code{m_scale}.}
 
-\item{cache_size}{Size of candidate cache (between m and n) for first loop. Successive iterations scaled by \code{m_scale}.}
+\item{cache_size}{Size of candidate cache for first loop. Successive
+iterations are scaled by \code{m_scale}.}
 
-\item{refresh_rate}{Fraction of the candidate set that is new during each iteration. Corresponds roughly to kappa from Keerthi & Chu paper.}
+\item{refresh_rate}{Fraction of the candidate set refreshed during each
+iteration.}
 
-\item{sig2}{Initial sigma squared value for Gaussian kernel}
+\item{sig2}{Initial process variance value for subset scoring.}
 
 \item{ell}{A vector (or scalar for isotropic kernel) of initial lengthscales.}
 
-\item{loops}{Number of times do we loop between subset and fitting step (see details).}
+\item{loops}{Number of matching-pursuit / GP-refit loops.}
 
-\item{p_vech}{Cutoff for switching to Vecchia approx. E.g., for \code{p = ncol(X) <= p_vech} we use \code{GP_fit} package for GP fitting, and we use \code{GpGp} otherwise.}
+\item{p_vech}{Cutoff for switching to GpGp. For \code{p <= p_vech},
+\code{hetGP::mleHomGP} is used. Otherwise \code{GpGp} is used.}
 
-\item{m_scale}{Multiplicative scaling factor for the subset size at each new iteration}
+\item{m_scale}{Multiplicative scaling factor for subset and cache size at
+each new iteration.}
 
 \item{verbose}{Logical.}
 
-\item{visualize}{Generates a "movie" showing the selection process on the first two columns. Default of 0 indicates no visualization. Non-zero values indicates the frame rate in seconds (recommend 0.1). This is not sophisticated.}
+\item{visualize}{Generates a crude visualization on the first two columns.}
+
+\item{...}{Additional arguments passed to the GP fitting backend.}
 }
 \description{
-A subset of data (SoD) approximate Gaussian process from Keerthi & Chu (2005)
-}
-\details{
-Algorithm has complexity O(nm^2). Candidate points are greedily selected to maximize a scoring criterion (Eq. 8 in Keerthi & Chu), conditional on kernel parameters. Once a subset is obtained, the GPfit package is used to estimate kernel parameters and the process repeats.
-}
-\examples{
-X <- lhs::maximinLHS(100, 2)
-f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
-fit <- mpgp(X, y)
-}
-\references{
-Keerthi, Sathiya, and Wei Chu. "A matching pursuit approach to sparse gaussian process regression." Advances in neural information processing systems 18 (2005).
-
-Liu, Haitao, et al. "When Gaussian process meets big data: A review of scalable GPs." IEEE transactions on neural networks and learning systems 31.11 (2020): 4405-4423.
-
-Chalupka, Krzysztof, Christopher KI Williams, and Iain Murray. "A framework for evaluating approximation methods for Gaussian process regression." The Journal of Machine Learning Research 14.1 (2013): 333-350.
-
-Ranjan, P., Haynes, R., and Karsten, R. (2011). A Computationally Stable Approach to Gaussian Process Interpolation of Deterministic Computer Simulation Data, Technometrics, 53(4), 366 - 378.
+A subset-of-data approximate Gaussian process using matching pursuit style
+subset selection, with hetGP::mleHomGP as the primary fitting engine.
 }

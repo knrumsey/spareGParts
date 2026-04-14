@@ -2,30 +2,23 @@
 % Please edit documentation in R/mpgp.R
 \name{predict.mpgp}
 \alias{predict.mpgp}
-\title{Predict Method for class mpgp}
+\title{Predict method for class mpgp}
 \usage{
-\method{predict}{mpgp}(object, newdata = NULL, samples = 1000)
+\method{predict}{mpgp}(object, newdata = NULL, samples = 1000, nugget = TRUE, ...)
 }
 \arguments{
-\item{object}{An object returned by the \code{mpgp} function.}
+\item{object}{An object returned by \code{mpgp()}.}
 
-\item{newdata}{A dataframe of the same dimension as the training data.}
+\item{newdata}{A matrix/dataframe of predictors.}
 
-\item{samples}{How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.}
+\item{samples}{Number of predictive draws to return. If 0 or FALSE, returns
+a 1 x n matrix of predictive means.}
 
-\item{...}{Additional arguments to predict}
+\item{nugget}{Logical. If TRUE, include nugget / observation noise in the
+predictive variance when available.}
+
+\item{...}{Ignored.}
 }
 \description{
-See \code{mpgp()} for details.
-}
-\details{
-Predict function for mpgp. Just a wrapper for predict.GP but matches the output expected by \code{duqling} package.
-}
-\examples{
-X <- lhs::maximinLHS(100, 2)
-f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f)
-fit <- mpgp(X, y)
-predict(fit)
-
+Predict method for class mpgp
 }
