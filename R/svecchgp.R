@@ -31,12 +31,18 @@
 
 #####   fitting function   ########
 
-svecgp <- function(X, y,ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
+svecgp <- function(X, y, ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
                     var.ini,ranges.ini,select=Inf,print.level=0,max.it=32,tol.dec=4,
-                    n.est=min(5e3,nrow(inputs)),find.vcf=TRUE,vcf.scorefun=ls) {
+                    n.est=min(5e3,nrow(X)),find.vcf=TRUE,vcf.scorefun=ls) {
 
   ## dimensions
   inputs <- X
+  if (is.vector(inputs)) {
+    inputs <- matrix(inputs, ncol = 1)
+  } else {
+    inputs <- as.matrix(inputs)
+  }
+  y <- as.numeric(y)
   n=nrow(inputs)
   d=ncol(inputs)
 
@@ -61,8 +67,11 @@ svecgp <- function(X, y,ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
   } else cur.var=var.ini
 
   ## default range parameters
-  input.ranges=apply(inputs,2,function(x) diff(range(x)))
+  # KR Note: Changing this for case when d == 1
+  #input.ranges=apply(inputs,2,function(x) diff(range(x)))
+  input.ranges <- vapply(seq_len(d), function(j) diff(range(inputs[, j])), numeric(1))
   if(missing(ranges.ini)) cur.ranges=.2*input.ranges else cur.ranges=ranges.ini
+  if (length(cur.ranges) == 1) cur.ranges <- rep(cur.ranges, d) # KR Note: Added this line for d == 1 case
   active=rep(TRUE,d)
 
   ## fixed nugget?
@@ -199,6 +208,8 @@ svecgp <- function(X, y,ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
 #' (if missing, will be generated based on fit object)
 #' @param scale scaling of inputs for ordering and conditioning.
 #' 'parms': by parameter estimates. 'ranges': to [0,1]. 'none': no scaling
+#' @param nugget Logical. Should predictive draws include the fitted residual
+#'   noise variance? Defaults to \code{TRUE}.
 #'
 #' @return Vector of length n.p (\code{n.sims=0}, \code{predvar=FALSE}) or
 #' list with entries \code{means} and/or \code{vars} and/or \code{samples}
@@ -212,12 +223,18 @@ svecgp <- function(X, y,ms=c(30),trend='pre',X_trend,nu=3.5,nug=0,scale='parms',
 #' @export
 predict.svecgp <- function(object, newdata=NULL,
                                m=100, joint=TRUE, samples=1000,
-                               predvar=TRUE, X_pred, scale='parms'){
+                               predvar=TRUE, X_pred, scale='parms', nugget=TRUE){
 
-  nsims <- samples
+  nsims <- if (identical(samples, FALSE)) 0 else samples
   fit <- object
-  if(is.null(newdata)){
+  # KR Note: Added this block for d == 1 case
+  if (is.null(newdata)) {
     newdata <- fit$locs
+  }
+  if (is.vector(newdata)) {
+    newdata <- matrix(newdata, ncol = ncol(fit$locs))
+  } else {
+    newdata <- as.matrix(newdata)
   }
   locs_pred <- newdata
 
@@ -226,6 +243,7 @@ predict.svecgp <- function(object, newdata=NULL,
   X_obs = fit$X
   beta = fit$betahat
   covparms = fit$covparms
+  nug_var <- covparms[1] * covparms[length(covparms)]
   covfun_name = fit$covfun_name
   n_obs <- nrow(locs_obs)
   n_pred <- nrow(locs_pred)
@@ -287,7 +305,14 @@ predict.svecgp <- function(object, newdata=NULL,
       NN_pred=NN[NN>n_obs]-n_obs
 
       # (co-)variances
-      K=get(covfun_name, envir = asNamespace("GpGp"))(covparms,locs_all[c(NN,i+n_obs),])
+      K = get(covfun_name, envir = asNamespace("GpGp"))(
+        covparms,
+        locs_all[c(NN, i + n_obs), , drop = FALSE]
+      )
+      # KR: Add for nugget is FALSE case
+      if (!nugget) {
+        K[nrow(K), ncol(K)] <- K[nrow(K), ncol(K)] - nug_var
+      }
       #cl=t(chol(K))
       cl <- tryCatch(
         t(chol(K)),
@@ -346,7 +371,11 @@ predict.svecgp <- function(object, newdata=NULL,
       NN=NNarray[i,]
 
       # (co-)variances
-      K=get(covfun_name, envir= asNamespace("GpGp"))(covparms,rbind(locs_obs[NN,],locs_pred[i,]))
+      # KR Note: Adding this block for d==1 case
+      K=get(covfun_name, envir= asNamespace("GpGp"))(covparms,rbind(locs_obs[NN,,drop=FALSE],locs_pred[i,,drop=FALSE]))
+      if (!nugget) {
+        K[nrow(K), ncol(K)] <- K[nrow(K), ncol(K)] - nug_var
+      }
       cl=t(chol(K))
 
       # prediction

@@ -20,42 +20,71 @@ rvm(
 )
 }
 \arguments{
-\item{X}{A dataframe or matrix of predictors scaled to be between 0 and 1}
+\item{X}{A data frame or matrix of predictors scaled to lie between 0 and 1.}
 
-\item{y}{a reponse vector of length n}
+\item{y}{A response vector of length \code{nrow(X)}.}
 
-\item{max_basis}{Bounds complexity by performing LASSO on initial basis functions when ncol(X) exceeds max_basis.}
+\item{max_basis}{Maximum number of basis functions retained after optional
+LASSO screening when the full basis is too wide.}
 
-\item{qlscale}{Discrete lengthscale set on quantile scale (quantiles of the distribution of pairwise X distances).}
+\item{qlscale}{Discrete lengthscale set on the quantile scale, formed from
+quantiles of pairwise distances among sampled rows of \code{X}.}
 
-\item{lscale}{Discrete lengthscale set. Overrides qlscale when specified.}
+\item{lscale}{Optional discrete set of kernel lengthscales. If supplied,
+this overrides \code{qlscale}.}
 
-\item{lscale_probs}{Prior probabilities corresponding to the lengthscale set.}
+\item{lscale_probs}{Prior probabilities corresponding to the candidate
+lengthscales.}
 
-\item{prune_thresh}{When alpha_i exceed prune_thresh, we effectively set it to infinity speeding up future matrix inverse solves.}
+\item{prune_thresh}{Basis functions with \code{alpha_i > prune_thresh} are
+effectively removed from the model to speed computation.}
 
-\item{drop_models}{Should models (corresponding to lscale) be dropped if they have sufficiently small posterior probability?}
+\item{drop_models}{Should candidate lengthscale models with negligible
+posterior probability be dropped?}
 
-\item{tol}{Tolerance for early stopping of hyperparameter optimization.}
+\item{tol}{Relative tolerance for early stopping of hyperparameter
+optimization.}
 
-\item{maxiter}{Number of iterations of EM algorithm before stopping.}
+\item{maxiter}{Maximum number of EM iterations.}
 
-\item{mc_cores}{How many cores to use (for parallelizing over various lengthscales)}
+\item{mc_cores}{Number of cores used to parallelize across candidate
+lengthscales.}
 
-\item{verbose}{Should progress be printed?}
+\item{verbose}{Logical; print progress?}
 }
 \description{
-A Bayesian RVM implementation (Tipping 1999). This implementation exists only because the (much more efficient) kernlab implementation doesn't provide probabilistic predictions (or the capability to do so).
+Bayesian relevance vector machine regression with Gaussian radial basis
+functions and optional Bayesian model averaging over a discrete set of
+kernel lengthscales.
 }
 \details{
-Algorithm has complexity O(nm^2). Candidate points are greedily selected to maximize a scoring criterion (Eq. 8 in Keerthi & Chu), conditional on kernel parameters. Once a subset is obtained, the GPfit package is used to estimate kernel parameters and the process repeats.
+This implementation is included because the faster \pkg{kernlab}
+implementation does not provide posterior predictive samples in the form
+needed for \pkg{duqling}.
+
+
+For each candidate kernel lengthscale, a radial-basis-function design matrix
+is built using training inputs as candidate centers. If the basis is too
+large, an initial LASSO screen is used to reduce its width. Conditional on
+that basis, the RVM hyperparameters are estimated by iterative type-II
+maximum likelihood updates for the coefficient precisions and observation
+noise variance. When multiple candidate lengthscales are supplied, posterior
+model probabilities are computed from the marginal likelihood values and used
+for Bayesian model averaging in prediction.
+
+Predictive draws are for the observed response, so posterior predictive
+variance includes the fitted residual noise variance.
 }
 \examples{
 X <- lhs::maximinLHS(100, 2)
-f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- rvm(X, y)
 }
 \references{
-Tipping, Michael. "The relevance vector machine." Advances in neural information processing systems 12 (1999).
+Tipping, Michael. "The relevance vector machine." Advances in neural
+information processing systems 12 (1999).
+
+Tipping, Michael E. "Sparse Bayesian learning and the relevance vector
+machine." Journal of Machine Learning Research 1 (2001): 211-244.
 }

@@ -4,22 +4,26 @@
 \alias{predict.bcmgp}
 \title{Predict Method for class bcmgp}
 \usage{
-\method{predict}{bcmgp}(object, newdata = NULL, samples = 1000)
+\method{predict}{bcmgp}(object, newdata = NULL, samples = 1000, nugget = TRUE, ...)
 }
 \arguments{
-\item{object}{An object returned by the \code{mpgp} function.}
+\item{object}{An object returned by the \code{bcmgp} function.}
 
 \item{newdata}{A dataframe of the same dimension as the training data.}
 
-\item{samples}{How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.}
+\item{samples}{How many posterior samples should be taken at each test point?
+If 0 or FALSE, then the posterior mean is returned as a 1 x n matrix.}
 
-\item{...}{Additional arguments to predict}
+\item{nugget}{Logical. Should the predictive variance include the nugget term?
+Defaults to \code{TRUE}.}
+
+\item{...}{Additional arguments to predict.}
 }
 \description{
 See \code{bcmgp()} for details.
 }
 \details{
-Predict function for mpgp. Just a wrapper for predict.GP but matches the output expected by \code{duqling} package.
+Predict function for bcmgp.
 }
 \examples{
 X <- lhs::maximinLHS(100, 2)

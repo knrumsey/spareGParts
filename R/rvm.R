@@ -1,135 +1,170 @@
 #' Relevant Vector Machine
 #'
-#' A Bayesian RVM implementation (Tipping 1999). This implementation exists only because the (much more efficient) kernlab implementation doesn't provide probabilistic predictions (or the capability to do so).
+#' Bayesian relevance vector machine regression with Gaussian radial basis
+#' functions and optional Bayesian model averaging over a discrete set of
+#' kernel lengthscales.
 #'
-#' @param X A dataframe or matrix of predictors scaled to be between 0 and 1
-#' @param y a reponse vector of length n
-#' @param max_basis Bounds complexity by performing LASSO on initial basis functions when ncol(X) exceeds max_basis.
-#' @param qlscale Discrete lengthscale set on quantile scale (quantiles of the distribution of pairwise X distances).
-#' @param lscale Discrete lengthscale set. Overrides qlscale when specified.
-#' @param lscale_probs Prior probabilities corresponding to the lengthscale set.
-#' @param prune_thresh When alpha_i exceed prune_thresh, we effectively set it to infinity speeding up future matrix inverse solves.
-#' @param drop_models Should models (corresponding to lscale) be dropped if they have sufficiently small posterior probability?
-#' @param tol Tolerance for early stopping of hyperparameter optimization.
-#' @param maxiter Number of iterations of EM algorithm before stopping.
-#' @param mc_cores How many cores to use (for parallelizing over various lengthscales)
-#' @param verbose Should progress be printed?
-#' @details Algorithm has complexity O(nm^2). Candidate points are greedily selected to maximize a scoring criterion (Eq. 8 in Keerthi & Chu), conditional on kernel parameters. Once a subset is obtained, the GPfit package is used to estimate kernel parameters and the process repeats.
+#' This implementation is included because the faster \pkg{kernlab}
+#' implementation does not provide posterior predictive samples in the form
+#' needed for \pkg{duqling}.
+#'
+#' @param X A data frame or matrix of predictors scaled to lie between 0 and 1.
+#' @param y A response vector of length \code{nrow(X)}.
+#' @param max_basis Maximum number of basis functions retained after optional
+#'   LASSO screening when the full basis is too wide.
+#' @param qlscale Discrete lengthscale set on the quantile scale, formed from
+#'   quantiles of pairwise distances among sampled rows of \code{X}.
+#' @param lscale Optional discrete set of kernel lengthscales. If supplied,
+#'   this overrides \code{qlscale}.
+#' @param lscale_probs Prior probabilities corresponding to the candidate
+#'   lengthscales.
+#' @param prune_thresh Basis functions with \code{alpha_i > prune_thresh} are
+#'   effectively removed from the model to speed computation.
+#' @param drop_models Should candidate lengthscale models with negligible
+#'   posterior probability be dropped?
+#' @param tol Relative tolerance for early stopping of hyperparameter
+#'   optimization.
+#' @param maxiter Maximum number of EM iterations.
+#' @param mc_cores Number of cores used to parallelize across candidate
+#'   lengthscales.
+#' @param verbose Logical; print progress?
+#'
+#' @details
+#' For each candidate kernel lengthscale, a radial-basis-function design matrix
+#' is built using training inputs as candidate centers. If the basis is too
+#' large, an initial LASSO screen is used to reduce its width. Conditional on
+#' that basis, the RVM hyperparameters are estimated by iterative type-II
+#' maximum likelihood updates for the coefficient precisions and observation
+#' noise variance. When multiple candidate lengthscales are supplied, posterior
+#' model probabilities are computed from the marginal likelihood values and used
+#' for Bayesian model averaging in prediction.
+#'
+#' Predictive draws are for the observed response, so posterior predictive
+#' variance includes the fitted residual noise variance.
+#'
 #' @references
-#' Tipping, Michael. "The relevance vector machine." Advances in neural information processing systems 12 (1999).
+#' Tipping, Michael. "The relevance vector machine." Advances in neural
+#' information processing systems 12 (1999).
+#'
+#' Tipping, Michael E. "Sparse Bayesian learning and the relevance vector
+#' machine." Journal of Machine Learning Research 1 (2001): 211-244.
+#'
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
-#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- rvm(X, y)
 #' @export
-rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_probs=NULL, prune_thresh=1e6, drop_models=TRUE, tol=5e-3, maxiter=2000, mc_cores=1, verbose=TRUE){
-  if(sd(y) == 0) y <- y + rnorm(y, 0, 1e-6)
+rvm <- function(X, y,
+                max_basis = 1000,
+                qlscale = c(0.2, 0.5),
+                lscale = NULL,
+                lscale_probs = NULL,
+                prune_thresh = 1e6,
+                drop_models = TRUE,
+                tol = 5e-3,
+                maxiter = 2000,
+                mc_cores = 1,
+                verbose = TRUE) {
+  X <- as.matrix(X)
 
-  if(is.null(lscale)){
+  if (stats::sd(y) == 0) {
+    y <- y + stats::rnorm(length(y), 0, 1e-6)
+  }
+
+  if (is.null(lscale)) {
     ndist <- min(1000, nrow(X))
-    ind_dist <- sample(nrow(X), ndist, replace=FALSE)
-    dists <- as.matrix(dist(X[ind_dist,,drop=FALSE]))
+    ind_dist <- sample(nrow(X), ndist, replace = FALSE)
+    dists <- as.matrix(stats::dist(X[ind_dist, , drop = FALSE]))
     pairwise_dists <- dists[lower.tri(dists)]
-    lscale <- quantile(pairwise_dists, probs = qlscale)
+    lscale <- as.numeric(stats::quantile(pairwise_dists, probs = qlscale))
   }
 
   nl <- length(lscale)
-  if(is.null(lscale_probs)){
-    lscale_probs <- rep(1/nl, nl)
+  if (is.null(lscale_probs)) {
+    lscale_probs <- rep(1 / nl, nl)
+  } else {
+    lscale_probs <- as.numeric(lscale_probs)
+    lscale_probs <- lscale_probs / sum(lscale_probs)
   }
-  mc_cores <- min(mc_cores, length(lscale))
 
-  # Get initial hyperparameter estimates
+  mc_cores <- min(mc_cores, nl)
+
   mu_y <- mean(y)
-  sigma_y <- sd(y)
-  y <- (y-mu_y) / sigma_y
-  sigma0 <- 1
-  #alpha0 should happen separately for each lengthscale
+  sigma_y <- stats::sd(y)
+  y <- (y - mu_y) / sigma_y
 
-  selected <- "should dissapear"
+  fit_one_lscale <- function(i) {
+    Phi_full <- make_Phi(X, lscale = lscale[i])
 
-  # Send phi matrices to helper function
-  Phi <- Fits <- list()
-  if(mc_cores == 1){
-    # Just loop over lscale's
-    for(i in seq_along(lscale)){
-      Phi_full <- make_Phi(X, lscale=lscale[i])
-      # LASSO screening (optional: only if Phi is wide)
-      if(ncol(Phi_full) > max_basis + 1){
-        # Fit LASSO path
-        lasso_fit <- glmnet(Phi_full, y, alpha=1, intercept=FALSE, lambda.min.ratio = 1e-6, nlambda=100)
-        # Find lambda that yields at most max_basis nonzero coefficients
-        nnz <- apply(coef(lasso_fit)[-1, , drop=FALSE], 2, function(x) sum(x != 0))
-        lambda_idx <- max(which(nnz <= max_basis))
-        coefs <- coef(lasso_fit, s=lasso_fit$lambda[lambda_idx])[-1]
-        selected <- which(as.numeric(coefs) != 0)
-        Phi_curr <- Phi_full[, selected, drop=FALSE]
+    if (ncol(Phi_full) > max_basis + 1) {
+      lasso_fit <- glmnet::glmnet(
+        Phi_full, y,
+        alpha = 1,
+        intercept = FALSE,
+        lambda.min.ratio = 1e-6,
+        nlambda = 100
+      )
+
+      coef_path <- as.matrix(stats::coef(lasso_fit))[-1, , drop = FALSE]
+      nnz <- apply(coef_path, 2, function(x) sum(x != 0))
+      ok <- which(nnz <= max_basis)
+
+      if (length(ok) == 0) {
+        coefs <- as.numeric(stats::coef(lasso_fit, s = min(lasso_fit$lambda))[-1])
+        selected <- order(abs(coefs), decreasing = TRUE)[seq_len(max_basis)]
       } else {
-        Phi_curr <- Phi_full
-        selected <- seq_len(ncol(Phi_full))
+        lambda_idx <- ok[which.max(nnz[ok])]
+        coefs <- as.numeric(stats::coef(lasso_fit, s = lasso_fit$lambda[lambda_idx])[-1])
+        selected <- which(coefs != 0)
       }
-      Phi[[i]] <- Phi_curr
 
-      #Phi[[i]] <- make_Phi(X, lscale=lscale[i])
-      # Do lasso here?
-      fit <- optimize_hyperpars(Phi[[i]], y, prune_thresh, tol, maxiter, verbose)
-      fit$selected <- selected
-      Fits[[i]] <- fit
+      selected <- sort(unique(selected))
+      Phi_curr <- Phi_full[, selected, drop = FALSE]
+    } else {
+      Phi_curr <- Phi_full
+      selected <- seq_len(ncol(Phi_full))
     }
-  }else{
-    # Use mclapply
-    out <- mclapply(seq_along(lscale), function(i) {
-      Phi_full <- make_Phi(X, lscale = lscale[i])
-      if (ncol(Phi_full) > max_basis + 1) {
-        # LASSO screening
-        lasso_fit <- glmnet(Phi_full, y, alpha = 1, intercept = FALSE,
-                            lambda.min.ratio = 1e-6, nlambda = 100)
-        nnz <- apply(coef(lasso_fit)[-1, , drop = FALSE], 2, function(x) sum(x != 0))
-        ok <- which(nnz <= max_basis)
-        if (length(ok) == 0) {
-          # Fallback: keep max_basis largest by absolute coefficient at minimal lambda
-          coefs <- coef(lasso_fit, s = min(lasso_fit$lambda))[-1]
-          selected <- order(abs(coefs), decreasing = TRUE)[seq_len(max_basis)]
-        } else {
-          lambda_idx <- ok[which.max(nnz[ok])]
-          coefs <- coef(lasso_fit, s = lasso_fit$lambda[lambda_idx])[-1]
-          selected <- which(as.numeric(coefs) != 0)
-        }
-        Phi_curr <- Phi_full[, selected, drop = FALSE]
-      } else {
-        Phi_curr <- Phi_full
-        selected <- seq_len(ncol(Phi_full))
-      }
-      # Fit RVM on the (potentially reduced) Phi
-      fit <- optimize_hyperpars(Phi_curr, y, prune_thresh, tol, maxiter)
-      fit$selected <- selected
-      list(Phi = Phi_curr, Fit = fit)
-    }, mc.cores = mc_cores)
 
-    Phi <- lapply(out, `[[`, "Phi")
-    Fits <- lapply(out, `[[`, "Fit")
+    fit <- optimize_hyperpars(
+      Phi_curr, y,
+      prune_thresh = prune_thresh,
+      tol = tol,
+      maxiter = maxiter,
+      verbose = verbose
+    )
+    fit$selected <- selected
+    list(Phi = Phi_curr, Fit = fit)
   }
 
-  # Evaluate posterior probabilities for each lscale
-  log_evidence <- sapply(Fits, function(fit) fit$log_marginal_lik)
+  if (mc_cores == 1) {
+    out_list <- lapply(seq_along(lscale), fit_one_lscale)
+  } else {
+    out_list <- parallel::mclapply(seq_along(lscale), fit_one_lscale, mc.cores = mc_cores)
+  }
+
+  Phi <- lapply(out_list, `[[`, "Phi")
+  Fits <- lapply(out_list, `[[`, "Fit")
+
+  log_evidence <- vapply(Fits, function(fit) fit$log_marginal_lik, numeric(1))
   log_prior <- log(lscale_probs)
-  max_logev <- max(log_evidence + log_prior)  # for numerical stability
+  max_logev <- max(log_evidence + log_prior)
   post_probs <- exp((log_evidence + log_prior) - max_logev)
   post_probs <- post_probs / sum(post_probs)
 
-  # Drop negligible models
-  if(drop_models){
+  if (drop_models) {
     keep <- which(post_probs > 1e-6)
     Fits <- Fits[keep]
+    Phi <- Phi[keep]
     lscale <- lscale[keep]
+    lscale_probs <- lscale_probs[keep]
     post_probs <- post_probs[keep]
-    # Renormalize, just in case
     post_probs <- post_probs / sum(post_probs)
   }
 
   out <- list(
     Fits = Fits,
+    Phi = Phi,
     lscale = lscale,
     lscale_probs = lscale_probs,
     post_probs = post_probs,
@@ -140,236 +175,266 @@ rvm <- function(X, y, max_basis=1000, qlscale=c(0.2, 0.5), lscale=NULL, lscale_p
     call = match.call()
   )
   class(out) <- "rvm"
-  return(out)
+  out
 }
 
 
-# Default RBF kernel (user can override)
-rbf_kernel <- function(x, y, l) exp(-sum((x-y)^2) / (2*l^2))
+rbf_kernel <- function(x, y, l) {
+  exp(-sum((x - y)^2) / (2 * l^2))
+}
+
 
 make_Phi <- function(X, centers = NULL, kernel = rbf_kernel, lscale = 0.1) {
-  if(is.null(centers)) centers <- X
+  if (is.null(centers)) {
+    centers <- X
+  }
+
   N <- nrow(X)
   M <- nrow(centers)
-  Phi <- matrix(NA, nrow = N, ncol = M)
-  for (i in 1:N) {
-    for (j in 1:M) {
+  Phi <- matrix(NA_real_, nrow = N, ncol = M)
+
+  for (i in seq_len(N)) {
+    for (j in seq_len(M)) {
       Phi[i, j] <- kernel(X[i, ], centers[j, ], lscale)
     }
   }
+
   Phi <- cbind(1, Phi)
+  return(Phi)
 }
 
 
-optimize_hyperpars <- function(Phi, y, prune_thresh=1e6, tol=1e-4, maxiter=500, verbose=TRUE){
+chol_solve_with_jitter <- function(A, b = NULL,
+                                   jitter_seq = c(0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2)) {
+  n <- nrow(A)
+
+  for (jit in jitter_seq) {
+    A_jit <- A
+    if (jit > 0) {
+      diag(A_jit) <- diag(A_jit) + jit
+    }
+
+    R <- try(chol(A_jit), silent = TRUE)
+    if (!inherits(R, "try-error")) {
+      if (is.null(b)) {
+        return(list(chol = R, jitter = jit))
+      } else {
+        x <- backsolve(R, forwardsolve(t(R), b))
+        return(list(chol = R, x = x, jitter = jit))
+      }
+    }
+  }
+
+  stop("Cholesky failed even after jitter escalation.")
+}
+
+
+optimize_hyperpars <- function(Phi, y,
+                               prune_thresh = 1e6,
+                               tol = 1e-4,
+                               maxiter = 500,
+                               verbose = TRUE) {
   N <- nrow(Phi)
   M <- ncol(Phi)
-  pruned <- NULL
+  pruned <- integer(0)
   alpha <- rep(1, M)
   sigma2 <- 1
   Phi_full <- Phi
-  # EM loop
-  for(iter in 1:maxiter){
-    # Compute Sigma and mu (posterior covariance and mean of weights)
-    keep_set <- setdiff(1:M, pruned)
-    if(!(1 %in% keep_set)){
-      warning("somehow intercept was deleted...")
-      keep_set <- c(1, keep_set)
-    }
-    Phi <- Phi_full[, keep_set, drop=FALSE]
-    Sigma_inv <- diag(alpha[keep_set], nrow=length(keep_set)) + crossprod(Phi) / sigma2
 
-    # Compute Sigma with try-catch and increasing jitter if needed
-    for (jit in c(0, 1e-8, 1e-6, 1e-4, 1e9)) {
-      #if(jit == 1e9) browser()
-      Sigma_inv_jit <- Sigma_inv + diag(jit, ncol(Sigma_inv))
-      Sigma <- try(solve(Sigma_inv_jit), silent = TRUE)
-      if (!inherits(Sigma, "try-error")) {
-        break
-      }
+  for (iter in seq_len(maxiter)) {
+    keep_set <- setdiff(seq_len(M), pruned)
+    if (!(1 %in% keep_set)) {
+      warning("Intercept was pruned; restoring it.")
+      keep_set <- sort(unique(c(1, keep_set)))
     }
-    mu <- Sigma %*% (t(Phi) %*% y) / sigma2
-    # Compute gamma values (sparsity relevance)
+
+    Phi <- Phi_full[, keep_set, drop = FALSE]
+    Sigma_inv <- diag(alpha[keep_set], nrow = length(keep_set)) + crossprod(Phi) / sigma2
+
+    chol_out <- chol_solve_with_jitter(Sigma_inv)
+    R <- chol_out$chol
+    Sigma <- chol2inv(R)
+    mu <- Sigma %*% (crossprod(Phi, y) / sigma2)
+
     gamma <- 1 - alpha[keep_set] * diag(Sigma)
-    # Update alpha and sigma2
+
     alpha_new <- rep(1e9, M)
-    alpha_new[keep_set] <- gamma / (mu^2)
-    alpha_new[1] <- 1e-9 # Keep the intercept always
-    sigma2_new <- max(1e-7, sum((y - Phi %*% mu)^2) / (N - sum(gamma)))
+    alpha_new[keep_set] <- as.numeric(gamma / pmax(mu^2, .Machine$double.eps))
+    alpha_new[1] <- 1e-9
 
-    # Prune step
+    denom <- max(N - sum(gamma), 1e-8)
+    sigma2_new <- max(1e-7, sum((y - Phi %*% mu)^2) / denom)
+
     ind_to_prune <- which(alpha_new > prune_thresh)
-    pruned <- c(pruned, ind_to_prune)
+    pruned <- union(pruned, ind_to_prune)
+    pruned <- setdiff(pruned, 1)
 
-    # Convergence check
     rel_change_alpha <- max(abs(alpha_new - alpha) / (abs(alpha) + .Machine$double.eps))
     rel_change_sigma <- abs(sigma2_new - sigma2) / (abs(sigma2) + .Machine$double.eps)
-    if(rel_change_alpha < tol && rel_change_sigma < tol) break
-    if(verbose){
-      if((iter %% 100) == 0){
-        cat("iteration ", iter, "\n\tmax relative change = ", max(rel_change_alpha, rel_change_sigma), "\n")
-      }
+
+    if (verbose && (iter %% 100 == 0)) {
+      cat(
+        "iteration ", iter,
+        "\n\tmax relative change = ",
+        max(rel_change_alpha, rel_change_sigma),
+        "\n",
+        sep = ""
+      )
     }
+
     alpha <- alpha_new
     sigma2 <- sigma2_new
+
+    if (max(rel_change_alpha, rel_change_sigma) < tol) {
+      break
+    }
   }
-  if(iter == maxiter){
+
+  if (iter == maxiter) {
     warning("maxiter reached before convergence was obtained.")
   }
-  # Compute log marginal likelihood (see Tipping 2001, Eqn 7)
-  #Phi <- Phi_full
-  Phi <- Phi_full[, keep_set, drop=FALSE]
-  C <- sigma2 * diag(N) + tcrossprod(Phi, Phi * rep(1/alpha[keep_set], each = nrow(Phi)))
-  cholC <- try(chol(C), silent = TRUE)
-  if(inherits(cholC, "try-error")){
-    #browser()
-    flag <- TRUE
-    scale <- sigma2
-    while(flag){
-      scale <- scale * 100
-      cholC <- try(chol(C+ scale*diag(N)), silent=TRUE)
-      if(!inherits(cholC, "try-error")) flag <- FALSE
-    }
-  }
-  logdetC <- 2*sum(log(diag(cholC)))
-  sCy <- try(solve(C, y), silent=TRUE)
-  if(inherits(sCy, "try-error")){
-    #browser()
-    flag <- TRUE
-    scale <- sigma2
-    while(flag){
-      scale <- scale * 100
-      sCy <- try(solve(C + scale*diag(N), y), silent=TRUE)
-      if(!inherits(sCy, "try-error")) flag <- FALSE
-    }
-  }
-  log_marginal_lik <- -0.5 * (N*log(2*pi) + logdetC + t(y) %*% sCy)
 
-  list(mu = mu, Sigma = Sigma, alpha = alpha, sigma2 = sigma2, keep_set=keep_set,
-       log_marginal_lik = as.numeric(log_marginal_lik), iter=iter)
+  keep_set <- setdiff(seq_len(M), pruned)
+  if (!(1 %in% keep_set)) {
+    keep_set <- sort(unique(c(1, keep_set)))
+  }
+
+  Phi <- Phi_full[, keep_set, drop = FALSE]
+  inv_alpha <- 1 / alpha[keep_set]
+  C <- sigma2 * diag(N) + tcrossprod(Phi, Phi * rep(inv_alpha, each = nrow(Phi)))
+
+  cholC_out <- chol_solve_with_jitter(C)
+  cholC <- cholC_out$chol
+  sCy <- backsolve(cholC, forwardsolve(t(cholC), y))
+
+  logdetC <- 2 * sum(log(diag(cholC)))
+  log_marginal_lik <- -0.5 * (N * log(2 * pi) + logdetC + crossprod(y, sCy))
+
+  list(
+    mu = mu,
+    Sigma = Sigma,
+    alpha = alpha,
+    sigma2 = sigma2,
+    keep_set = keep_set,
+    log_marginal_lik = as.numeric(log_marginal_lik),
+    iter = iter
+  )
 }
 
 
 #' Posterior Predictive Sampling for RVM Objects
 #'
-#' Generates posterior predictive samples for a fitted \code{rvm} object, allowing for Bayesian model averaging over kernel lengthscales.
+#' Generates posterior predictive samples for a fitted \code{rvm} object,
+#' allowing for Bayesian model averaging over kernel lengthscales.
 #'
 #' @param object An object of class \code{rvm} as returned by \code{rvm()}.
-#' @param newdata A matrix or data frame of new input locations at which to generate predictions. If \code{NULL}, predictions are generated for the training data.
-#' @param samples Number of posterior predictive samples to draw (default is 1000).
-#' @param ... Additional arguments (currently ignored).
+#' @param newdata A matrix or data frame of new input locations. If \code{NULL},
+#'   predictions are generated for the training data.
+#' @param samples Number of posterior predictive samples.
+#' @param nugget Logical. Should predictive draws include the fitted residual
+#'   noise variance? Defaults to \code{TRUE}.
+#' @param ... Additional arguments, currently ignored.
 #'
-#' @details
-#' For each posterior sample, a model (lengthscale) is sampled according to its posterior probability, and a Gaussian predictive draw is made using the corresponding RVM fit. If only a single model is present, all samples are drawn from that model.
-#'
-#' @return
-#' A numeric matrix of dimension \code{samples x nrow(newdata)} containing posterior predictive draws.
-#'
-#' @seealso \code{\link{rvm}}
-#'
-#' @examples
-#' # Assume fit is a fitted rvm object
-#' Xtest <- matrix(runif(50), ncol = ncol(fit$X_train))
-#' pred_draws <- predict(fit, Xtest, samples = 500)
-#' # Posterior predictive mean
-#' yhat <- colMeans(pred_draws)
+#' @return A numeric matrix of dimension \code{samples x nrow(newdata)}
+#'   containing posterior predictive draws.
 #' @export
-predict.rvm <- function(object, newdata = NULL, samples = 1000, ...) {
-  if (is.null(newdata)){
+predict.rvm <- function(object, newdata = NULL, samples = 1000, nugget = TRUE, ...) {
+  if (is.null(newdata)) {
     newdata <- object$X_train
   }
+  newdata <- as.matrix(newdata)
+
   n_models <- length(object$Fits)
   n_test <- nrow(newdata)
-  preds <- matrix(NA, nrow = samples, ncol = n_test)
+  preds <- matrix(NA_real_, nrow = samples, ncol = n_test)
 
-  # Posterior weights (normalize for safety)
   wts <- object$post_probs
+  wts <- wts / sum(wts)
 
-  # Precompute all model predictive means and variances
-  mu_post <- s2_post <- matrix(NA, nrow=n_models, ncol=n_test)
+  mu_post <- s2_post <- matrix(NA_real_, nrow = n_models, ncol = n_test)
+
   for (j in seq_len(n_models)) {
     fit <- object$Fits[[j]]
     lscale <- object$lscale[j]
 
-    # Define X's
-    Xj <- newdata
-    Xj_train <- object$X_train
-
-    # Extract model information
     mu <- fit$mu
     Sigma <- fit$Sigma
     sigma2 <- fit$sigma2
     keep_set <- fit$keep_set
 
-    # Make the K vectors
-    K <- make_Phi(Xj, Xj_train, lscale=lscale)
-    K <- K[,fit$selected] # Drop LASSO columns
-    K <- K[,keep_set]     # Induce rvm sparsity
+    K <- make_Phi(newdata, object$X_train, lscale = lscale)
+    K <- K[, fit$selected, drop = FALSE]
+    K <- K[, keep_set, drop = FALSE]
 
-    # Get mu and sigma for each testing point
-    mu_post[j,] <- as.vector(K %*% mu)
-    s2_post[j,] <- sigma2 + rowSums((K %*% Sigma) * K)
+    mu_post[j, ] <- as.vector(K %*% mu)
+    s2_post[j, ] <- rowSums((K %*% Sigma) * K)
+
+    if (nugget) {
+      s2_post[j, ] <- s2_post[j, ] + sigma2
+    }
   }
 
-  # For single model, just use that one repeatedly
-  if (n_models == 1){
-    for (i in 1:samples) {
-      preds[i, ] <- rnorm(n_test, mean = mu_post[1, ], sd = sqrt(s2_post[1, ]))
+  if (n_models == 1) {
+    for (i in seq_len(samples)) {
+      preds[i, ] <- stats::rnorm(
+        n_test,
+        mean = mu_post[1, ],
+        sd = sqrt(pmax(s2_post[1, ], 0))
+      )
     }
-  }else{
-    # For multiple models, sample which model to use for each posterior sample
+  } else {
     mix_ids <- sample(seq_len(n_models), samples, replace = TRUE, prob = wts)
-    for (i in 1:samples){
+    for (i in seq_len(samples)) {
       j <- mix_ids[i]
-      preds[i, ] <- rnorm(n_test, mean = mu_post[j, ], sd = sqrt(s2_post[j, ]))
+      preds[i, ] <- stats::rnorm(
+        n_test,
+        mean = mu_post[j, ],
+        sd = sqrt(pmax(s2_post[j, ], 0))
+      )
     }
   }
 
-  # Transform back to original scale if needed
   if (!is.null(object$y_scale) && !is.null(object$y_center)) {
     preds <- preds * object$y_scale + object$y_center
   }
-  return(preds)
+
+  preds
 }
+
 
 #' Plot Diagnostics for RVM Objects
 #'
-#' Plots diagnostic summaries for a fitted \code{rvm} model, including predicted vs observed and residual histogram.
+#' Plots diagnostic summaries for a fitted \code{rvm} model.
 #'
 #' @param x An object of class \code{rvm} as returned by \code{rvm()}.
-#' @param ... Additional plotting arguments (currently ignored).
-#'
-#' @details
-#' By default, produces a two-panel plot: (1) a scatterplot of posterior predictive means vs observed \code{y}, with 95\% predictive intervals; (2) a histogram of residuals with a normal curve overlay.
-#'
-#' @return
-#' Called for its side effect (plots). Invisibly returns \code{NULL}.
-#'
-#' @seealso \code{\link{predict.rvm}}
-#'
-#' @examples
-#' # Assume fit is a fitted rvm object
-#' plot(fit)
+#' @param ... Additional plotting arguments.
 #' @export
-plot.rvm <- function(x, ...){
+plot.rvm <- function(x, ...) {
   opar <- graphics::par(no.readonly = TRUE)
-  graphics::par(mfrow = c(1, 2), mar = c(4, 4, 2, 1), oma = c(0,
-                                                              0, 0, 0))
+  on.exit(graphics::par(opar), add = TRUE)
+
+  graphics::par(mfrow = c(1, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 0))
+
   preds <- stats::predict(x)
-  yhat <- apply(preds, 2, mean)
+  yhat <- colMeans(preds)
   yy <- x$y_center + x$y_scale * x$y_train
   ci <- 2 * apply(preds, 2, stats::sd)
-  plot(yy, yhat, pch = 16, xlab = "y")
-  graphics::segments(x0 = yy, y0 = yhat - ci, y1 = yhat +
-                       ci, col = "orange")
+
+  plot(yy, yhat, pch = 16, xlab = "y", ...)
+  graphics::segments(x0 = yy, y0 = yhat - ci, y1 = yhat + ci, col = "orange")
   graphics::points(yy, yhat, pch = 16)
   graphics::abline(0, 1, col = "dodgerblue")
-  rr <- yy - yhat
-  graphics::hist(rr, breaks = ceiling(length(rr)^0.33 * diff(range(rr))/(3.5 *
-                                                                           stats::sd(rr))), freq = F)
-  #xx = seq(range(rr)[1], range(rr)[2], length.out = 100)
-  graphics::curve(stats::dnorm(x, mean(rr), stats::sd(rr)),
-                  add = TRUE, col = "orange", lwd=2)
-  graphics::par(opar)
-}
 
+  rr <- yy - yhat
+  graphics::hist(
+    rr,
+    breaks = ceiling(length(rr)^0.33 * diff(range(rr)) / (3.5 * stats::sd(rr))),
+    freq = FALSE
+  )
+  graphics::curve(
+    stats::dnorm(x, mean(rr), stats::sd(rr)),
+    add = TRUE,
+    col = "orange",
+    lwd = 2
+  )
+}

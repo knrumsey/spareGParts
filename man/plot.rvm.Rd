@@ -9,21 +9,8 @@
 \arguments{
 \item{x}{An object of class \code{rvm} as returned by \code{rvm()}.}
 
-\item{...}{Additional plotting arguments (currently ignored).}
-}
-\value{
-Called for its side effect (plots). Invisibly returns \code{NULL}.
+\item{...}{Additional plotting arguments.}
 }
 \description{
-Plots diagnostic summaries for a fitted \code{rvm} model, including predicted vs observed and residual histogram.
-}
-\details{
-By default, produces a two-panel plot: (1) a scatterplot of posterior predictive means vs observed \code{y}, with 95\% predictive intervals; (2) a histogram of residuals with a normal curve overlay.
-}
-\examples{
-# Assume fit is a fitted rvm object
-plot(fit)
-}
-\seealso{
-\code{\link{predict.rvm}}
+Plots diagnostic summaries for a fitted \code{rvm} model.
 }

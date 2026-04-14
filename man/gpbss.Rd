@@ -2,14 +2,14 @@
 % Please edit documentation in R/gpbspline.R
 \name{gpbss}
 \alias{gpbss}
-\title{Gaussian Process–Controlled B-Spline Surface}
+\title{Gaussian Process-Controlled B-Spline Surface}
 \usage{
 gpbss(
   X,
   y,
-  m_min = 4L,
-  m_max = 20L,
-  degree = 3L,
+  m_min = 4,
+  m_max = 20,
+  degree = 3,
   mean_fn = c("none", "linear"),
   tau = 1e-06,
   psi_init = NULL,
@@ -28,99 +28,101 @@ gpbss(
 \item{X}{A numeric matrix or data frame of predictors, scaled to lie in
 \eqn{(0,1)} in each dimension.}
 
-\item{y}{A numeric response vector of length \eqn{n}.}
+\item{y}{A numeric response vector of length \code{nrow(X)}.}
 
-\item{m_min}{Integer or integer vector of length \eqn{p}. Initial (and minimum)
-number of B-spline basis functions per dimension. If scalar, the value is
-recycled across dimensions.}
+\item{m_min}{Integer or integer vector of length \code{p}. Initial, and
+minimum, number of spline basis functions per dimension. If scalar, the
+value is recycled across dimensions.}
 
-\item{m_max}{Integer or integer vector of length \eqn{p}. Maximum number of
-B-spline basis functions per dimension allowed during SKNS.}
+\item{m_max}{Integer or integer vector of length \code{p}. Maximum number of
+spline basis functions per dimension allowed during SKNS. If scalar, the
+value is recycled across dimensions.}
 
 \item{degree}{Integer spline degree used in \code{splines::bs}. Default is 3
 (cubic splines).}
 
-\item{mean_fn}{Mean function specification. Either \code{"linear"} (uses
-\code{Fmat = X} with no intercept) or \code{"none"} (no explicit mean function).
-Intercepts are handled implicitly through the spline basis.}
+\item{mean_fn}{Mean function specification. Either \code{"none"} for no
+explicit trend term, or \code{"linear"} for a linear trend using the
+columns of \code{X} without an intercept.}
 
-\item{tau}{Nonnegative scalar specifying the noise-to-signal ratio
-\eqn{\tau = \delta} in the model. The observation noise variance is
-\eqn{\sigma^2 \tau}. Currently treated as fixed.}
+\item{tau}{Nonnegative scalar specifying the noise-to-signal ratio. The
+observation noise variance is \eqn{\sigma^2 \tau}. Currently treated as
+fixed.}
 
-\item{psi_init}{Optional numeric vector of length \eqn{p} giving initial values
-for the log lengthscale parameters of the Gaussian process prior on spline
-coefficients. If \code{NULL}, a weak default is used.}
+\item{psi_init}{Optional numeric vector of length \code{p} giving initial
+values for the log lengthscale parameters of the Gaussian prior on spline
+coefficients. If \code{NULL}, a default value is used.}
 
-\item{warn_complexity}{Logical; if \code{TRUE}, prints a warning comparing the
-rough cubic-time cost proxy \eqn{n + M^3} (where \eqn{M = \prod_j m_j}) to the
-\eqn{n^3} cost of a standard Gaussian process.}
+\item{warn_complexity}{Logical; if \code{TRUE}, warns when the dense spline
+representation appears more computationally expensive than a rough cubic
+cost proxy for a full Gaussian process.}
 
 \item{method}{Optimization method passed to \code{\link[stats]{optim}} for
 profile likelihood maximization. Default is \code{"L-BFGS-B"}.}
 
 \item{lower, upper}{Optional numeric vectors specifying lower and upper bounds
-for the optimization parameters \code{psi}. If \code{NULL}, reasonable
-defaults are used.}
+for the optimization parameters \code{psi}. If \code{NULL}, defaults are
+used.}
 
 \item{verbose}{Logical; should progress and diagnostic information be printed?}
 
-\item{skns}{Logical; if \code{TRUE}, performs sequential knot number selection
-(SKNS) over dimensions to choose the number of spline basis functions.}
+\item{skns}{Logical; if \code{TRUE}, performs sequential knot number
+selection over dimensions to choose the number of spline basis functions.}
 
 \item{m_grid}{Optional integer vector specifying candidate knot counts to try
-during SKNS. If provided, the same grid is used for all dimensions (subject
-to bounds \code{m_min} and \code{m_max}).}
+during SKNS. If provided, the same grid is reused for each dimension,
+subject to the bounds imposed by \code{m_min} and \code{m_max}.}
 
 \item{m_by}{Integer step size used to construct candidate knot grids when
-\code{m_grid} is \code{NULL}. Larger values result in coarser (faster)
-searches. Default is 3.}
+\code{m_grid} is \code{NULL}. If scalar, it is recycled across dimensions.}
 
-\item{...}{Additional arguments passed to \code{\link[stats]{optim}}.}
+\item{...}{Additional arguments passed to \code{\link[stats]{optim}} through
+\code{\link{fit_gpbss_profile}}.}
+}
+\value{
+A list of class \code{"gpbspline"} containing the training data, selected
+basis dimensions, tensor-product basis matrices, covariance constructor, and
+fitted profile likelihood quantities.
 }
 \description{
-An emulator based on the Gaussian Process–controlled B-spline surface model
-of Li et al. (2026). The response surface is represented using a
-tensor-product B-spline basis, with a Gaussian process prior placed on the
-spline coefficients. Model parameters are estimated via profile likelihood,
-and the number of spline basis functions per dimension can be selected using
-a sequential knot number selection (SKNS) procedure based on AIC.
+An emulator based on a Gaussian process prior over tensor-product B-spline
+coefficients. The response surface is represented using a tensor-product
+B-spline basis, while dependence among spline coefficients is modeled through
+a separable Gaussian covariance structure. Model parameters are estimated by
+profile likelihood, and the number of spline basis functions per dimension
+can optionally be selected using a sequential knot number selection (SKNS)
+procedure.
 }
 \details{
 The model takes the form
 \deqn{y = F\beta + U\gamma + \varepsilon,}
 where \eqn{U} is a tensor-product B-spline basis matrix and the spline
-coefficients satisfy \eqn{\gamma \sim \mathcal{N}(0, \sigma^2 R(\psi))}.
+coefficients satisfy
+\deqn{\gamma \sim \mathcal{N}(0, \sigma^2 R(\psi)).}
 The covariance \eqn{R(\psi)} is constructed as a separable Gaussian process
 over the spline coefficient lattice, with one lengthscale parameter per input
-dimension. The regression coefficients \eqn{\beta} and variance \eqn{\sigma^2}
-are estimated in closed form, while the covariance hyperparameters \eqn{\psi}
-are estimated by maximizing the profile likelihood.
+dimension. For fixed \eqn{\psi}, the regression coefficients and variance are
+estimated in closed form, while \eqn{\psi} is estimated by maximizing the
+profile likelihood.
 
-Sequential knot number selection (SKNS) proceeds dimension by dimension,
-holding all other knot counts fixed while evaluating candidate values for a
-single dimension, and selecting the value that maximizes the profile
-likelihood. This greedy procedure provides a data-driven way to control
-spline resolution while mitigating the curse of dimensionality.
+If \code{skns = TRUE}, sequential knot number selection proceeds dimension by
+dimension: all other knot counts are held fixed while candidate values are
+evaluated for a single dimension, and the value giving the largest profile
+likelihood is retained. This provides a simple data-driven way to choose
+spline resolution without performing an exhaustive search over all tensor
+configurations.
 
-This implementation currently uses dense tensor-product basis matrices and
-dense linear algebra, and is intended for low- to moderate-dimensional
-problems. Future versions may exploit sparsity and Kronecker structure to
-improve scalability.
+This implementation uses dense tensor-product basis matrices and dense linear
+algebra, so it is intended mainly for low- to moderate-dimensional problems.
 }
 \examples{
 \dontrun{
 X <- lhs::maximinLHS(200, 2)
-f <- function(x) x[1]^2 + x[1]*x[2]
+f <- function(x) x[1]^2 + x[1] * x[2]
 y <- apply(X, 1, f) + rnorm(200, 0, 0.05)
 
 fit <- gpbss(X, y)
 preds <- predict(fit, X)
 }
 
-}
-\references{
-Li, Y., Tian, Y., Mo, H., & Du, S. (2026).
-Gaussian Process Controlled B-Spline Surface.
-\emph{INFORMS Journal on Data Science}.
 }

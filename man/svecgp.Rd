@@ -19,7 +19,7 @@ svecgp(
   print.level = 0,
   max.it = 32,
   tol.dec = 4,
-  n.est = min(5000, nrow(inputs)),
+  n.est = min(5000, nrow(X)),
   find.vcf = TRUE,
   vcf.scorefun = ls
 )

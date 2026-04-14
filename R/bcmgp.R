@@ -25,7 +25,7 @@ bcmgp <- function(X, y,
                   M=NULL, max_size=NULL,
                   partition="cluster",
                   expert_weight="varying",
-                  isotropic=FALSE){
+                  isotropic=NULL){
   if(max(X) > 1 | min(X) < 0) warning("Expecting inputs on (0, 1) scale")
   mu_y <- mean(y)
   sigma_y <- sd(y)
@@ -70,11 +70,14 @@ bcmgp <- function(X, y,
 #'
 #' See \code{bcmgp()} for details.
 #'
-#' @param object An object returned by the \code{mpgp} function.
+#' @param object An object returned by the \code{bcmgp} function.
 #' @param newdata A dataframe of the same dimension as the training data.
-#' @param samples How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.
-#' @param ... Additional arguments to predict
-#' @details Predict function for mpgp. Just a wrapper for predict.GP but matches the output expected by \code{duqling} package.
+#' @param samples How many posterior samples should be taken at each test point?
+#'   If 0 or FALSE, then the posterior mean is returned as a 1 x n matrix.
+#' @param nugget Logical. Should the predictive variance include the nugget term?
+#'   Defaults to \code{TRUE}.
+#' @param ... Additional arguments to predict.
+#' @details Predict function for bcmgp.
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
@@ -84,44 +87,69 @@ bcmgp <- function(X, y,
 #'
 #' @importFrom stats predict
 #' @export
-predict.bcmgp <- function(object, newdata=NULL, samples=1000){
+predict.bcmgp <- function(object, newdata = NULL, samples = 1000, nugget = TRUE, ...){
   if(is.null(newdata)){
     if(length(object$X_list) > 1){
       newdata <- do.call(rbind, object$X_list)
-    }else{
+    } else {
       newdata <- object$X_list[[1]]
     }
-
   }
 
   M <- length(object$X_list)
-  sigma_prior <- sqrt(object$params$sigma^2 + object$params$tau^2)
-  preds <- matrix(NA, nrow=samples, ncol=nrow(newdata))
-  for(i in 1:nrow(newdata)){
-    xx <- newdata[i,,drop=FALSE]
-    mu <- sigma <- rep(NA, M)
+  tau2 <- object$params$tau^2
+  sigma2 <- object$params$sigma^2
+
+  sigma_prior <- if(nugget){
+    sqrt(sigma2 + tau2)
+  } else {
+    sqrt(sigma2)
+  }
+
+  return_mean_only <- identical(samples, 0) || identical(samples, FALSE)
+  if(return_mean_only){
+    preds <- matrix(NA_real_, nrow = 1, ncol = nrow(newdata))
+  } else {
+    preds <- matrix(NA_real_, nrow = samples, ncol = nrow(newdata))
+  }
+
+  for(i in seq_len(nrow(newdata))){
+    xx <- newdata[i, , drop = FALSE]
+    mu <- sigma <- rep(NA_real_, M)
     beta <- rep(1, M)
-    for(m in 1:M){
-      gp_params <- gp_predict(xx,
-                              object$X_list[[m]], object$y_list[[m]],
-                              object$params$ell,
-                              object$params$sigma^2,
-                              object$params$tau^2)
+
+    for(m in seq_len(M)){
+      gp_params <- gp_predict(
+        xx,
+        object$X_list[[m]],
+        object$y_list[[m]],
+        object$params$ell,
+        sigma2,
+        tau2,
+        nugget = nugget
+      )
 
       mu[m] <- gp_params$mean
       sigma[m] <- sqrt(gp_params$variance)
+
       if(object$weight == "varying"){
         beta[m] <- log(sigma_prior) - log(sigma[m])
       }
     }
 
-    sigma2_post <- (sum(beta * sigma^(-2)) + (1 - sum(beta)) * sigma_prior^(-2))^(-1)
+    sigma2_post <- (sum(beta * sigma^(-2)) +
+                      (1 - sum(beta)) * sigma_prior^(-2))^(-1)
     mean_post <- sigma2_post * sum(beta * sigma^(-2) * mu)
-    preds[,i] <- rnorm(samples, mean_post, sqrt(abs(sigma2_post)))
+    sigma2_post <- max(sigma2_post, 1e-12)
+
+    if(return_mean_only){
+      preds[1, i] <- mean_post
+    } else {
+      preds[, i] <- stats::rnorm(samples, mean_post, sqrt(sigma2_post))
+    }
   }
 
-  preds <- object$mu_y + object$sigma_y * preds
-  return(preds)
+  object$mu_y + object$sigma_y * preds
 }
 
 #' Plot Method for class bcmgp
@@ -262,34 +290,41 @@ kfun <- function(X1, X2, ell, sigma2){
   sigma2 * exp(-0.5 * pmax(r2, 0))
 }
 
-gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2){
-  # Use your kernel
+gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2, nugget = TRUE){
   K <- kfun(X_train, X_train, ell, sigma2) + diag(tau2, nrow(X_train))
-  Ks <- kfun(X_train, matrix(xstar, nrow=1), ell, sigma2) # n x 1
-  Kss <- sigma2 # rbf kernel at same point is sigma2
+  Ks <- kfun(X_train, matrix(xstar, nrow = 1), ell, sigma2)
+  Kss <- sigma2
 
-  # Numerically stable solve
-  # Attempt to solve with increasing jitter values
   jitter_values <- c(0, 1e-7, 1e-4, 1e-1)
   alpha <- NULL
   success <- FALSE
 
-  for (j in jitter_values) {
+  for(j in jitter_values){
     Kj <- K
-    if (j > 0) {
+    if(j > 0){
       Kj <- Kj + diag(j, nrow(Kj))
     }
 
-    attempt <- try(solve(Kj, y_train), silent = TRUE)  # Replace 'b' with your RHS
-    if (!inherits(attempt, "try-error") && all(is.finite(attempt))) {
+    attempt <- try(solve(Kj, y_train), silent = TRUE)
+    if(!inherits(attempt, "try-error") && all(is.finite(attempt))){
       alpha <- attempt
       success <- TRUE
       break
     }
   }
+
+  if(!success){
+    stop("Unable to solve GP system in gp_predict().")
+  }
+
   mu <- as.numeric(t(Ks) %*% alpha)
-  v <- solve(Kj, Ks)     # (n x 1)
-  var <- as.numeric(Kss - t(Ks) %*% v + tau2)
-  var <- max(var, 1e-10) # prevent negative variance
-  return(list(mean = mu, variance = var))
+  v <- solve(Kj, Ks)
+  var <- as.numeric(Kss - t(Ks) %*% v)
+
+  if(nugget){
+    var <- var + tau2
+  }
+
+  var <- max(var, 1e-10)
+  list(mean = mu, variance = var)
 }

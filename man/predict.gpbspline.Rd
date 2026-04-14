@@ -4,7 +4,7 @@
 \alias{predict.gpbspline}
 \title{Posterior Predictive Samples for GP-B-spline Emulator}
 \usage{
-\method{predict}{gpbspline}(object, newdata = NULL, samples = 1000, ...)
+\method{predict}{gpbspline}(object, newdata = NULL, samples = 1000, nugget = TRUE, ...)
 }
 \arguments{
 \item{object}{An object of class \code{gpbspline} returned by \code{gpbspline()}.}
@@ -12,6 +12,9 @@
 \item{newdata}{New input matrix \code{(n_test x p)}. If \code{NULL}, uses training inputs.}
 
 \item{samples}{Integer number of posterior predictive samples to draw. Default is 1000.}
+
+\item{nugget}{Logical. Should predictive draws include the fitted residual
+noise variance? Defaults to \code{TRUE}.}
 
 \item{...}{Additional arguments (currently ignored).}
 }

@@ -11,7 +11,7 @@ bcmgp(
   max_size = NULL,
   partition = "cluster",
   expert_weight = "varying",
-  isotropic = FALSE
+  isotropic = NULL
 )
 }
 \arguments{

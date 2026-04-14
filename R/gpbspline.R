@@ -1,81 +1,83 @@
-#' Gaussian Process–Controlled B-Spline Surface
+#' Gaussian Process-Controlled B-Spline Surface
 #'
-#' An emulator based on the Gaussian Process–controlled B-spline surface model
-#' of Li et al. (2026). The response surface is represented using a
-#' tensor-product B-spline basis, with a Gaussian process prior placed on the
-#' spline coefficients. Model parameters are estimated via profile likelihood,
-#' and the number of spline basis functions per dimension can be selected using
-#' a sequential knot number selection (SKNS) procedure based on AIC.
+#' An emulator based on a Gaussian process prior over tensor-product B-spline
+#' coefficients. The response surface is represented using a tensor-product
+#' B-spline basis, while dependence among spline coefficients is modeled through
+#' a separable Gaussian covariance structure. Model parameters are estimated by
+#' profile likelihood, and the number of spline basis functions per dimension
+#' can optionally be selected using a sequential knot number selection (SKNS)
+#' procedure.
 #'
 #' @param X A numeric matrix or data frame of predictors, scaled to lie in
 #'   \eqn{(0,1)} in each dimension.
-#' @param y A numeric response vector of length \eqn{n}.
-#' @param m_min Integer or integer vector of length \eqn{p}. Initial (and minimum)
-#'   number of B-spline basis functions per dimension. If scalar, the value is
-#'   recycled across dimensions.
-#' @param m_max Integer or integer vector of length \eqn{p}. Maximum number of
-#'   B-spline basis functions per dimension allowed during SKNS.
+#' @param y A numeric response vector of length \code{nrow(X)}.
+#' @param m_min Integer or integer vector of length \code{p}. Initial, and
+#'   minimum, number of spline basis functions per dimension. If scalar, the
+#'   value is recycled across dimensions.
+#' @param m_max Integer or integer vector of length \code{p}. Maximum number of
+#'   spline basis functions per dimension allowed during SKNS. If scalar, the
+#'   value is recycled across dimensions.
 #' @param degree Integer spline degree used in \code{splines::bs}. Default is 3
 #'   (cubic splines).
-#' @param mean_fn Mean function specification. Either \code{"linear"} (uses
-#'   \code{Fmat = X} with no intercept) or \code{"none"} (no explicit mean function).
-#'   Intercepts are handled implicitly through the spline basis.
-#' @param tau Nonnegative scalar specifying the noise-to-signal ratio
-#'   \eqn{\tau = \delta} in the model. The observation noise variance is
-#'   \eqn{\sigma^2 \tau}. Currently treated as fixed.
-#' @param psi_init Optional numeric vector of length \eqn{p} giving initial values
-#'   for the log lengthscale parameters of the Gaussian process prior on spline
-#'   coefficients. If \code{NULL}, a weak default is used.
-#' @param warn_complexity Logical; if \code{TRUE}, prints a warning comparing the
-#'   rough cubic-time cost proxy \eqn{n + M^3} (where \eqn{M = \prod_j m_j}) to the
-#'   \eqn{n^3} cost of a standard Gaussian process.
+#' @param mean_fn Mean function specification. Either \code{"none"} for no
+#'   explicit trend term, or \code{"linear"} for a linear trend using the
+#'   columns of \code{X} without an intercept.
+#' @param tau Nonnegative scalar specifying the noise-to-signal ratio. The
+#'   observation noise variance is \eqn{\sigma^2 \tau}. Currently treated as
+#'   fixed.
+#' @param psi_init Optional numeric vector of length \code{p} giving initial
+#'   values for the log lengthscale parameters of the Gaussian prior on spline
+#'   coefficients. If \code{NULL}, a default value is used.
+#' @param warn_complexity Logical; if \code{TRUE}, warns when the dense spline
+#'   representation appears more computationally expensive than a rough cubic
+#'   cost proxy for a full Gaussian process.
 #' @param method Optimization method passed to \code{\link[stats]{optim}} for
 #'   profile likelihood maximization. Default is \code{"L-BFGS-B"}.
 #' @param lower,upper Optional numeric vectors specifying lower and upper bounds
-#'   for the optimization parameters \code{psi}. If \code{NULL}, reasonable
-#'   defaults are used.
+#'   for the optimization parameters \code{psi}. If \code{NULL}, defaults are
+#'   used.
 #' @param verbose Logical; should progress and diagnostic information be printed?
-#' @param skns Logical; if \code{TRUE}, performs sequential knot number selection
-#'   (SKNS) over dimensions to choose the number of spline basis functions.
+#' @param skns Logical; if \code{TRUE}, performs sequential knot number
+#'   selection over dimensions to choose the number of spline basis functions.
 #' @param m_grid Optional integer vector specifying candidate knot counts to try
-#'   during SKNS. If provided, the same grid is used for all dimensions (subject
-#'   to bounds \code{m_min} and \code{m_max}).
+#'   during SKNS. If provided, the same grid is reused for each dimension,
+#'   subject to the bounds imposed by \code{m_min} and \code{m_max}.
 #' @param m_by Integer step size used to construct candidate knot grids when
-#'   \code{m_grid} is \code{NULL}. Larger values result in coarser (faster)
-#'   searches. Default is 3.
-#' @param ... Additional arguments passed to \code{\link[stats]{optim}}.
+#'   \code{m_grid} is \code{NULL}. If scalar, it is recycled across dimensions.
+#' @param ... Additional arguments passed to \code{\link[stats]{optim}} through
+#'   \code{\link{fit_gpbss_profile}}.
 #'
 #' @details
 #' The model takes the form
 #' \deqn{y = F\beta + U\gamma + \varepsilon,}
 #' where \eqn{U} is a tensor-product B-spline basis matrix and the spline
-#' coefficients satisfy \eqn{\gamma \sim \mathcal{N}(0, \sigma^2 R(\psi))}.
+#' coefficients satisfy
+#' \deqn{\gamma \sim \mathcal{N}(0, \sigma^2 R(\psi)).}
 #' The covariance \eqn{R(\psi)} is constructed as a separable Gaussian process
 #' over the spline coefficient lattice, with one lengthscale parameter per input
-#' dimension. The regression coefficients \eqn{\beta} and variance \eqn{\sigma^2}
-#' are estimated in closed form, while the covariance hyperparameters \eqn{\psi}
-#' are estimated by maximizing the profile likelihood.
+#' dimension. For fixed \eqn{\psi}, the regression coefficients and variance are
+#' estimated in closed form, while \eqn{\psi} is estimated by maximizing the
+#' profile likelihood.
 #'
-#' Sequential knot number selection (SKNS) proceeds dimension by dimension,
-#' holding all other knot counts fixed while evaluating candidate values for a
-#' single dimension, and selecting the value that maximizes the profile
-#' likelihood. This greedy procedure provides a data-driven way to control
-#' spline resolution while mitigating the curse of dimensionality.
+#' If \code{skns = TRUE}, sequential knot number selection proceeds dimension by
+#' dimension: all other knot counts are held fixed while candidate values are
+#' evaluated for a single dimension, and the value giving the largest profile
+#' likelihood is retained. This provides a simple data-driven way to choose
+#' spline resolution without performing an exhaustive search over all tensor
+#' configurations.
 #'
-#' This implementation currently uses dense tensor-product basis matrices and
-#' dense linear algebra, and is intended for low- to moderate-dimensional
-#' problems. Future versions may exploit sparsity and Kronecker structure to
-#' improve scalability.
+#' This implementation uses dense tensor-product basis matrices and dense linear
+#' algebra, so it is intended mainly for low- to moderate-dimensional problems.
 #'
-#' @references
-#' Li, Y., Tian, Y., Mo, H., & Du, S. (2026).
-#' Gaussian Process Controlled B-Spline Surface.
-#' \emph{INFORMS Journal on Data Science}.
+#' @return
+#' A list of class \code{"gpbspline"} containing the training data, selected
+#' basis dimensions, tensor-product basis matrices, covariance constructor, and
+#' fitted profile likelihood quantities.
 #'
 #' @examples
 #' \dontrun{
 #' X <- lhs::maximinLHS(200, 2)
-#' f <- function(x) x[1]^2 + x[1]*x[2]
+#' f <- function(x) x[1]^2 + x[1] * x[2]
 #' y <- apply(X, 1, f) + rnorm(200, 0, 0.05)
 #'
 #' fit <- gpbss(X, y)
@@ -84,82 +86,115 @@
 #'
 #' @export
 gpbss <- function(X, y,
-                      m_min = 4L,
-                      m_max = 20L,
-                      degree = 3L,
-                      mean_fn = c("none", "linear"),
-                      tau = 1e-6,
-                      psi_init = NULL,
-                      warn_complexity = TRUE,
-                      method = "L-BFGS-B",
-                      lower = NULL,
-                      upper = NULL,
-                      verbose = FALSE,
-                      skns = TRUE,
-                      m_grid = NULL,
-                      m_by = 3,
-                      ...) {
+                  m_min = 4,
+                  m_max = 20,
+                  degree = 3,
+                  mean_fn = c("none", "linear"),
+                  tau = 1e-6,
+                  psi_init = NULL,
+                  warn_complexity = TRUE,
+                  method = "L-BFGS-B",
+                  lower = NULL,
+                  upper = NULL,
+                  verbose = FALSE,
+                  skns = TRUE,
+                  m_grid = NULL,
+                  m_by = 3,
+                  ...) {
 
   mean_fn <- match.arg(mean_fn)
 
-  ## ---- coerce / validate ----
-  if (is.null(X)) stop("X must be provided.", call. = FALSE)
-  if (is.vector(X)) X <- matrix(X, ncol = 1)
-  if (!is.matrix(X)) stop("X must be a matrix (or a vector coerced to matrix).", call. = FALSE)
+  # Coerce and validate inputs
+  if (is.null(X)) {
+    stop("X must be provided.", call. = FALSE)
+  }
+  if (is.vector(X)) {
+    X <- matrix(X, ncol = 1)
+  } else {
+    X <- as.matrix(X)
+  }
   storage.mode(X) <- "double"
 
   n <- nrow(X)
   p <- ncol(X)
 
-  if (is.null(y) || length(y) != n) stop("y must be a numeric vector of length nrow(X).", call. = FALSE)
+  if (is.null(y) || length(y) != n) {
+    stop("y must be a numeric vector of length nrow(X).", call. = FALSE)
+  }
   y <- as.numeric(y)
 
   m_min <- as.integer(m_min)
-  if (length(m_min) == 1L) m_min <- rep(m_min, p)
-  if (length(m_min) != p) stop("m_min must be length 1 or length ncol(X).", call. = FALSE)
+  if (length(m_min) == 1) {
+    m_min <- rep(m_min, p)
+  }
+  if (length(m_min) != p) {
+    stop("m_min must have length 1 or ncol(X).", call. = FALSE)
+  }
 
   m_max <- as.integer(m_max)
-  if (length(m_max) == 1L) m_max <- rep(m_max, p)
-  if (length(m_max) != p) stop("m_max must be length 1 or length ncol(X).", call. = FALSE)
-  if (any(m_max < m_min)) stop("All m_max must be >= m_min.", call. = FALSE)
+  if (length(m_max) == 1) {
+    m_max <- rep(m_max, p)
+  }
+  if (length(m_max) != p) {
+    stop("m_max must have length 1 or ncol(X).", call. = FALSE)
+  }
+  if (any(m_max < m_min)) {
+    stop("All entries of m_max must be >= m_min.", call. = FALSE)
+  }
 
   degree <- as.integer(degree)
-  if (degree < 0L) stop("degree must be nonnegative.", call. = FALSE)
-
-  if (!is.numeric(tau) || length(tau) != 1L || tau < 0) stop("tau must be a nonnegative scalar.", call. = FALSE)
-
-  ## ---- mean/trend design Fmat (NO intercept) ----
-  if (mean_fn == "linear") {
-    Fmat <- as.matrix(X)
-    colnames(Fmat) <- paste0("x", seq_len(p))
-  } else {
-    Fmat <- matrix(numeric(0), nrow = n, ncol = 0)
+  if (length(degree) != 1 || degree < 0) {
+    stop("degree must be a nonnegative integer.", call. = FALSE)
   }
 
-  ## ---- default psi_init and bounds ----
-  if (is.null(psi_init)) psi_init <- rep(log(0.5), p)  # log lengthscales
-  psi_init <- as.numeric(psi_init)
-  if (length(psi_init) != p) stop("psi_init must have length p.", call. = FALSE)
+  if (!is.numeric(tau) || length(tau) != 1 || tau < 0) {
+    stop("tau must be a nonnegative scalar.", call. = FALSE)
+  }
 
-  if (is.null(lower)) lower <- rep(log(1e-3), p)
-  if (is.null(upper)) upper <- rep(log(1e3),  p)
-
-  ## ---- helpers: build 1D bases, tensor U, and R_fun ----
-  build_B_list <- function(m_vec) {
-    B_list <- vector("list", p)
-    for (j in seq_len(p)) {
-      Bj <- splines::bs(
-        x = X[, j],
-        df = as.integer(m_vec[j]),
-        degree = degree,
-        intercept = TRUE
-      )
-      Bj <- as.matrix(Bj)
-      B_list[[j]] <- Bj
+  # Mean / trend design with no intercept
+  Fmat <- switch(
+    mean_fn,
+    none = matrix(numeric(0), nrow = n, ncol = 0),
+    linear = {
+      FF <- X
+      colnames(FF) <- paste0("x", seq_len(p))
+      FF
     }
-    B_list
+  )
+
+  # Hyperparameter defaults and bounds
+  if (is.null(psi_init)) {
+    psi_init <- rep(log(0.5), p)
+  }
+  psi_init <- as.numeric(psi_init)
+  if (length(psi_init) != p) {
+    stop("psi_init must have length ncol(X).", call. = FALSE)
   }
 
+  if (is.null(lower)) {
+    lower <- rep(log(1e-3), p)
+  }
+  if (is.null(upper)) {
+    upper <- rep(log(1e3), p)
+  }
+
+  # Build 1D spline bases
+  build_B_list <- function(m_vec) {
+    out <- vector("list", p)
+    for (j in seq_len(p)) {
+      out[[j]] <- as.matrix(
+        splines::bs(
+          x = X[, j],
+          df = as.integer(m_vec[j]),
+          degree = degree,
+          intercept = TRUE
+        )
+      )
+    }
+    out
+  }
+
+  # Build dense tensor-product basis matrix
   build_U <- function(B_list) {
     m_eff <- vapply(B_list, ncol, integer(1))
     M <- prod(m_eff)
@@ -168,143 +203,164 @@ gpbss <- function(X, y,
     for (i in seq_len(n)) {
       ui <- B_list[[1]][i, ]
       if (p >= 2) {
-        for (j in 2:p) ui <- kronecker(ui, B_list[[j]][i, ])
+        for (j in 2:p) {
+          ui <- kronecker(ui, B_list[[j]][i, ])
+        }
       }
       U[i, ] <- ui
     }
+
     list(U = U, m_eff = m_eff, M = M)
   }
 
+  # Construct covariance over spline coefficients
   make_R_fun <- function(m_eff) {
     m_eff_local <- m_eff
     p_local <- p
+
     function(psi) {
       psi <- as.numeric(psi)
-      if (length(psi) != p_local) stop("psi length mismatch inside R_fun.", call. = FALSE)
-      ell <- exp(psi)
+      if (length(psi) != p_local) {
+        stop("psi length mismatch inside R_fun.", call. = FALSE)
+      }
 
+      ell <- exp(psi)
       R <- NULL
+
       for (j in seq_len(p_local)) {
         idx <- seq_len(m_eff_local[j])
-        D2 <- (outer(idx, idx, "-"))^2
+        D2 <- outer(idx, idx, "-")^2
         Rj <- exp(-0.5 * D2 / (ell[j]^2))
         R <- if (is.null(R)) Rj else kronecker(R, Rj)
       }
+
       R
     }
   }
 
-  ## ---- SKNS candidate grid ----
+  # Candidate grids for SKNS
   if (is.null(m_grid)) {
-    # default m_by if user didn't provide one
-    if (is.null(m_by)) m_by <- 2L
-
     m_by <- as.integer(m_by)
-    if (length(m_by) == 1L) m_by <- rep(m_by, p)
-    if (length(m_by) != p) stop("m_by must be length 1 or length p.", call. = FALSE)
+    if (length(m_by) == 1) {
+      m_by <- rep(m_by, p)
+    }
+    if (length(m_by) != p) {
+      stop("m_by must have length 1 or ncol(X).", call. = FALSE)
+    }
+    if (any(m_by <= 0)) {
+      stop("All entries of m_by must be positive.", call. = FALSE)
+    }
 
     m_grid_list <- vector("list", p)
     for (j in seq_len(p)) {
-      if (m_by[j] <= 0L) stop("m_by must be positive.", call. = FALSE)
       grid <- seq(m_min[j], m_max[j], by = m_by[j])
-      if (tail(grid, 1L) != m_max[j]) grid <- c(grid, m_max[j])
+      if (tail(grid, 1) != m_max[j]) {
+        grid <- c(grid, m_max[j])
+      }
       m_grid_list[[j]] <- unique(as.integer(grid))
     }
-
   } else {
-    # If user supplies a single vector, reuse it for every dim but clamp to [m_min, m_max]
-    if (is.numeric(m_grid) && is.vector(m_grid)) {
-      m_grid_list <- lapply(seq_len(p), function(j) {
-        g <- as.integer(m_grid)
-        g <- g[g >= m_min[j] & g <= m_max[j]]
-        if (length(g) == 0) g <- m_min[j]
-        unique(g)
-      })
-    } else {
+    if (!is.numeric(m_grid) || !is.vector(m_grid)) {
       stop("m_grid must be NULL or an integer vector.", call. = FALSE)
     }
+
+    m_grid <- as.integer(m_grid)
+    m_grid_list <- lapply(seq_len(p), function(j) {
+      g <- m_grid[m_grid >= m_min[j] & m_grid <= m_max[j]]
+      if (length(g) == 0) {
+        g <- m_min[j]
+      }
+      unique(g)
+    })
   }
 
-  ## ---- SKNS loop ----
+  # Sequential knot number selection
   m_sel <- m_min
-  skns_trace <- list()
   psi_warm <- psi_init
+  skns_trace <- vector("list", length = 0)
 
-  if (isTRUE(skns) && p >= 1) {
+  if (isTRUE(skns)) {
     for (j in seq_len(p)) {
-
       cand <- m_grid_list[[j]]
       best_ll <- -Inf
       best_mj <- m_sel[j]
       best_fit <- NULL
 
-      if (verbose) cat("SKNS dim", j, "candidates:", paste(cand, collapse = ", "), "\n")
+      if (verbose) {
+        cat("SKNS dim", j, "candidates:", paste(cand, collapse = ", "), "\n")
+      }
 
       for (mj in cand) {
         m_try <- m_sel
         m_try[j] <- mj
 
         B_try <- build_B_list(m_try)
-        tmpU <- build_U(B_try)
-        U_try <- tmpU$U
-        m_eff_try <- tmpU$m_eff
-        M_try <- tmpU$M
+        U_info <- build_U(B_try)
+        U_try <- U_info$U
+        m_eff_try <- U_info$m_eff
+        M_try <- U_info$M
 
-        if (warn_complexity) {
+        if (warn_complexity && verbose) {
           cost_this <- n + M_try^3
-          cost_gp   <- n^3
+          cost_gp <- n^3
           ratio <- cost_this / cost_gp
-          if (verbose) {
-            cat(sprintf("  mj=%d -> M=%d (%s) ; (n+M^3)/n^3 = %.3g\n",
-                        mj, M_try, paste(m_eff_try, collapse="x"), ratio))
-          }
+          cat(sprintf(
+            "  mj=%d -> M=%d (%s); (n+M^3)/n^3 = %.3g\n",
+            mj, M_try, paste(m_eff_try, collapse = "x"), ratio
+          ))
         }
 
-        R_fun_try <- make_R_fun(m_eff_try)
-
         fit_try <- fit_gpbss_profile(
-          y = y, U = U_try, Fmat = Fmat, tau = tau, R_fun = R_fun_try,
+          y = y,
+          U = U_try,
+          Fmat = Fmat,
+          tau = tau,
+          R_fun = make_R_fun(m_eff_try),
           psi_init = psi_warm,
           method = method,
-          lower = lower, upper = upper,
+          lower = lower,
+          upper = upper,
           jitter = 1e-8,
           sigma2_df = "n",
           verbose = FALSE,
           ...
         )
 
-        ll_try <- fit_try$logLik
-        if (is.finite(ll_try) && ll_try > best_ll) {
-          best_ll <- ll_try
+        if (is.finite(fit_try$logLik) && fit_try$logLik > best_ll) {
+          best_ll <- fit_try$logLik
           best_mj <- mj
           best_fit <- fit_try
         }
       }
 
-      # Commit best mj for this dimension
       m_sel[j] <- best_mj
-      if (!is.null(best_fit)) psi_warm <- best_fit$psi_hat
+      if (!is.null(best_fit)) {
+        psi_warm <- best_fit$psi_hat
+      }
 
       skns_trace[[j]] <- list(
         dim = j,
         chosen_m = best_mj,
         logLik = best_ll,
-        psi_hat = if (!is.null(best_fit)) best_fit$psi_hat else NA
+        psi_hat = if (!is.null(best_fit)) best_fit$psi_hat else NA_real_
       )
 
-      if (verbose) cat("  -> chose mj =", best_mj, " (logLik =", best_ll, ")\n")
+      if (verbose) {
+        cat("  -> chose mj =", best_mj, " (logLik =", best_ll, ")\n")
+      }
     }
   }
 
-  ## ---- final fit using selected m ----
+  # Final basis and covariance construction
   B_list <- build_B_list(m_sel)
-  tmpU <- build_U(B_list)
-  U <- tmpU$U
-  m_eff <- tmpU$m_eff
-  M <- tmpU$M
+  U_info <- build_U(B_list)
+  U <- U_info$U
+  m_eff <- U_info$m_eff
+  M <- U_info$M
+  R_fun <- make_R_fun(m_eff)
 
   cost_this <- n + M^3
-  cost_gp   <- n^3
+  cost_gp <- n^3
   ratio <- cost_this / cost_gp
 
   msg <- sprintf(
@@ -318,8 +374,7 @@ gpbss <- function(X, y,
   if (verbose) {
     cat(msg)
   }
-
-  if (ratio > 1 & warn_complexity) {
+  if (warn_complexity && ratio > 1) {
     warning(
       paste0(
         "Dense spline basis may be computationally inefficient relative to a full GP.\n",
@@ -329,13 +384,17 @@ gpbss <- function(X, y,
     )
   }
 
-  R_fun <- make_R_fun(m_eff)
-
+  # Final profile-likelihood fit
   fit <- fit_gpbss_profile(
-    y = y, U = U, Fmat = Fmat, tau = tau, R_fun = R_fun,
+    y = y,
+    U = U,
+    Fmat = Fmat,
+    tau = tau,
+    R_fun = R_fun,
     psi_init = psi_warm,
     method = method,
-    lower = lower, upper = upper,
+    lower = lower,
+    upper = upper,
     jitter = 1e-8,
     sigma2_df = "n",
     verbose = verbose,
@@ -621,24 +680,41 @@ fit_gpbss_profile <- function(y, U, Fmat, tau, R_fun,
 #' @param object An object of class \code{gpbspline} returned by \code{gpbspline()}.
 #' @param newdata New input matrix \code{(n_test x p)}. If \code{NULL}, uses training inputs.
 #' @param samples Integer number of posterior predictive samples to draw. Default is 1000.
+#' @param nugget Logical. Should predictive draws include the fitted residual
+#'   noise variance? Defaults to \code{TRUE}.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A numeric matrix of dimension \code{samples x n_test}, where each row is
 #'   one posterior predictive draw.
 #'
 #' @export
-predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
-  if (!inherits(object, "gpbspline")) stop("object must be of class 'gpbspline'.", call. = FALSE)
+predict.gpbspline <- function(object, newdata = NULL, samples = 1000, nugget = TRUE, ...) {
+  if (!inherits(object, "gpbspline")) {
+    stop("object must be of class 'gpbspline'.", call. = FALSE)
+  }
 
-  if (is.null(newdata)) newdata <- object$X
-  if (is.vector(newdata)) newdata <- matrix(newdata, ncol = object$p)
-  if (!is.matrix(newdata)) stop("newdata must be a matrix (or vector coerced to matrix).", call. = FALSE)
-  if (ncol(newdata) != object$p) stop("newdata must have ncol equal to training X.", call. = FALSE)
+  return_mean_only <- identical(samples, 0) || identical(samples, FALSE)
 
-  samples <- as.integer(samples)
-  if (length(samples) != 1L || samples < 1L) stop("samples must be a positive integer.", call. = FALSE)
+  if (!return_mean_only) {
+    samples <- as.integer(samples)
+    if (length(samples) != 1L || samples < 1L) {
+      stop("samples must be a positive integer, or 0/FALSE for predictive mean.", call. = FALSE)
+    }
+  }
 
-  # --- pull fitted pieces ---
+  if (is.null(newdata)) {
+    newdata <- object$X
+  }
+  if (is.vector(newdata)) {
+    newdata <- matrix(newdata, ncol = object$p)
+  }
+  if (!is.matrix(newdata)) {
+    stop("newdata must be a matrix (or vector coerced to matrix).", call. = FALSE)
+  }
+  if (ncol(newdata) != object$p) {
+    stop("newdata must have ncol equal to training X.", call. = FALSE)
+  }
+
   fit <- object$fit
   if (is.null(fit$beta_hat) || is.null(fit$sigma2_hat) || is.null(fit$psi_hat)) {
     stop("object$fit must contain beta_hat, sigma2_hat, and psi_hat.", call. = FALSE)
@@ -655,35 +731,36 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
   R_fun <- object$R_fun
   B_list_train <- object$B_list
 
-  n <- nrow(X)
   n_test <- nrow(newdata)
   p <- object$p
 
-  # --- build F* consistent with training (your convention: no intercept) ---
   if (ncol(F_train) == 0L) {
     F_star <- matrix(numeric(0), nrow = n_test, ncol = 0)
   } else {
     F_star <- as.matrix(newdata)
-    if (ncol(F_star) != ncol(F_train)) stop("Fmat dimension mismatch.", call. = FALSE)
+    if (ncol(F_star) != ncol(F_train)) {
+      stop("Fmat dimension mismatch.", call. = FALSE)
+    }
   }
 
-  # --- evaluate 1D spline bases at newdata using training bs() attributes ---
   eval_bs_from_attr <- function(B_train, x_new) {
     knots <- attr(B_train, "knots")
     bdry  <- attr(B_train, "Boundary.knots")
     deg   <- attr(B_train, "degree")
+
     if (is.null(bdry) || length(bdry) != 2L) {
       stop("Stored spline basis is missing Boundary.knots.", call. = FALSE)
     }
 
-    tvec <- c(rep(bdry[1], deg + 1L),
-              if (!is.null(knots) && length(knots) > 0) knots else numeric(0),
-              rep(bdry[2], deg + 1L))
+    tvec <- c(
+      rep(bdry[1], deg + 1L),
+      if (!is.null(knots) && length(knots) > 0) knots else numeric(0),
+      rep(bdry[2], deg + 1L)
+    )
 
     Bnew <- splines::splineDesign(knots = tvec, x = x_new, ord = deg + 1L, outer.ok = TRUE)
     Bnew <- as.matrix(Bnew)
 
-    # Safety: splineDesign should match training ncol
     if (ncol(Bnew) != ncol(B_train)) {
       stop("Basis evaluation mismatch: ncol(Bnew) != ncol(B_train).", call. = FALSE)
     }
@@ -695,7 +772,6 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
     B_list_star[[j]] <- eval_bs_from_attr(B_list_train[[j]], newdata[, j])
   }
 
-  # --- build dense tensor basis U* (same column ordering as training) ---
   m_eff <- vapply(B_list_star, ncol, integer(1))
   M <- prod(m_eff)
   U_star <- matrix(0, nrow = n_test, ncol = M)
@@ -707,21 +783,22 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
     U_star[i, ] <- ui
   }
 
-  # --- compute posterior for gamma ---
-  # A = (R^{-1} + (1/tau) U'U)^{-1}
   R <- R_fun(psi_hat)
   if (!is.matrix(R) || nrow(R) != M || ncol(R) != M) {
     stop("R_fun(psi_hat) must return an M x M matrix matching U*.", call. = FALSE)
   }
 
-  # R^{-1} (jitter if needed)
   Rinv <- try(solve(R), silent = TRUE)
   if (inherits(Rinv, "try-error")) {
     jit <- max(1e-10, 1e-10 * mean(diag(R)))
     Rinv <- solve(R + diag(jit, M))
   }
 
-  UU <- crossprod(U_train)  # M x M
+  if (tau <= 0) {
+    stop("predict.gpbspline currently requires tau > 0.", call. = FALSE)
+  }
+
+  UU <- crossprod(U_train)
   Kmat <- Rinv + (1 / tau) * UU
 
   A <- try(solve(Kmat), silent = TRUE)
@@ -730,46 +807,47 @@ predict.gpbspline <- function(object, newdata = NULL, samples = 1000, ...) {
     A <- solve(Kmat + diag(jit, M))
   }
 
-  # r = y - F beta
   if (ncol(F_train) == 0L) {
     r <- y
   } else {
     r <- as.numeric(y - drop(F_train %*% beta_hat))
   }
 
-  Ur <- crossprod(U_train, r)             # M x 1
-  gamma_hat <- (1 / tau) * (A %*% Ur)     # M x 1
+  Ur <- crossprod(U_train, r)
+  gamma_hat <- (1 / tau) * (A %*% Ur)
 
-  # predictive mean
   mu <- numeric(n_test)
-  if (ncol(F_star) > 0L) mu <- mu + as.numeric(F_star %*% beta_hat)
+  if (ncol(F_star) > 0L) {
+    mu <- mu + as.numeric(F_star %*% beta_hat)
+  }
   mu <- mu + as.numeric(U_star %*% gamma_hat)
 
-  # predictive covariance: sigma2 * (U* A U*' + tau I)
-  # (this is the expensive part; OK for now)
-  Cov <- sigma2_hat * (U_star %*% A %*% t(U_star) + diag(tau, n_test))
+  if (return_mean_only) {
+    return(matrix(mu, nrow = 1))
+  }
 
-  # draw samples jointly (keeps cross-point dependence)
+  Cov <- sigma2_hat * (U_star %*% A %*% t(U_star))
+  if (nugget) {
+    diag(Cov) <- diag(Cov) + sigma2_hat * tau
+  }
+
   preds <- matrix(NA_real_, nrow = samples, ncol = n_test)
   jitC <- max(1e-10, 1e-10 * mean(diag(Cov)))
   L <- try(chol(Cov + diag(jitC, n_test)), silent = TRUE)
 
   if (!inherits(L, "try-error")) {
-    Z <- matrix(rnorm(samples * n_test), nrow = n_test)
-    # chol is upper-tri U so U' %*% Z gives covariance
+    Z <- matrix(stats::rnorm(samples * n_test), nrow = n_test)
     preds <- t(mu + t(L) %*% Z)
   } else {
-    # fallback: eigen (slower but robust)
     ev <- eigen(Cov, symmetric = TRUE)
     vals <- pmax(ev$values, 0)
     sqrtC <- ev$vectors %*% diag(sqrt(vals), n_test) %*% t(ev$vectors)
-    Z <- matrix(rnorm(samples * n_test), nrow = n_test)
+    Z <- matrix(stats::rnorm(samples * n_test), nrow = n_test)
     preds <- t(mu + sqrtC %*% Z)
   }
 
   preds
 }
-
 #' Plot Diagnostics for GP-B-spline Objects
 #'
 #' Produces simple diagnostic plots for a fitted \code{gpbspline} model:

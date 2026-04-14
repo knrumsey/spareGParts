@@ -12,7 +12,8 @@
   samples = 1000,
   predvar = TRUE,
   X_pred,
-  scale = "parms"
+  scale = "parms",
+  nugget = TRUE
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ separate/independent predictions (does not produce joint samples)}
 
 \item{scale}{scaling of inputs for ordering and conditioning.
 'parms': by parameter estimates. 'ranges': to [0,1]. 'none': no scaling}
+
+\item{nugget}{Logical. Should predictive draws include the fitted residual
+noise variance? Defaults to \code{TRUE}.}
 
 \item{fit}{object returned from fit_scaled()}
 

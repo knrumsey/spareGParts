@@ -4,33 +4,26 @@
 \alias{predict.rvm}
 \title{Posterior Predictive Sampling for RVM Objects}
 \usage{
-\method{predict}{rvm}(object, newdata = NULL, samples = 1000, ...)
+\method{predict}{rvm}(object, newdata = NULL, samples = 1000, nugget = TRUE, ...)
 }
 \arguments{
 \item{object}{An object of class \code{rvm} as returned by \code{rvm()}.}
 
-\item{newdata}{A matrix or data frame of new input locations at which to generate predictions. If \code{NULL}, predictions are generated for the training data.}
+\item{newdata}{A matrix or data frame of new input locations. If \code{NULL},
+predictions are generated for the training data.}
 
-\item{samples}{Number of posterior predictive samples to draw (default is 1000).}
+\item{samples}{Number of posterior predictive samples.}
 
-\item{...}{Additional arguments (currently ignored).}
+\item{nugget}{Logical. Should predictive draws include the fitted residual
+noise variance? Defaults to \code{TRUE}.}
+
+\item{...}{Additional arguments, currently ignored.}
 }
 \value{
-A numeric matrix of dimension \code{samples x nrow(newdata)} containing posterior predictive draws.
+A numeric matrix of dimension \code{samples x nrow(newdata)}
+  containing posterior predictive draws.
 }
 \description{
-Generates posterior predictive samples for a fitted \code{rvm} object, allowing for Bayesian model averaging over kernel lengthscales.
-}
-\details{
-For each posterior sample, a model (lengthscale) is sampled according to its posterior probability, and a Gaussian predictive draw is made using the corresponding RVM fit. If only a single model is present, all samples are drawn from that model.
-}
-\examples{
-# Assume fit is a fitted rvm object
-Xtest <- matrix(runif(50), ncol = ncol(fit$X_train))
-pred_draws <- predict(fit, Xtest, samples = 500)
-# Posterior predictive mean
-yhat <- colMeans(pred_draws)
-}
-\seealso{
-\code{\link{rvm}}
+Generates posterior predictive samples for a fitted \code{rvm} object,
+allowing for Bayesian model averaging over kernel lengthscales.
 }
