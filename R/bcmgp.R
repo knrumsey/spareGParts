@@ -269,16 +269,24 @@ fit_gp_shared_hypers <- function(X_list, y_list,
                control = list(maxit = maxit))
 
   ## ---- unpack (repeat ell if isotropic) --------------------------------- ##
-  ell_est <- if (isotropic) rep( exp(opt$par[1L]), d )
-  else            exp( opt$par[ seq_len(d) ] )
+  n_ell_par <- if (isotropic) 1L else d
 
-  list(ell   = ell_est,
-       sigma = exp(opt$par[length(ell_est) + 1L]),
-       tau   = exp(opt$par[length(ell_est) + 2L]),
-       value = opt$value,
-       convergence = opt$convergence,
-       counts = opt$counts,
-       message = opt$message)
+
+  ell_est <- if (isotropic) {
+    rep(exp(opt$par[1L]), d)
+  } else {
+    exp(opt$par[seq_len(d)])
+  }
+
+  list(
+    ell   = ell_est,
+    sigma = exp(opt$par[n_ell_par + 1L]),
+    tau   = exp(opt$par[n_ell_par + 2L]),
+    value = opt$value,
+    convergence = opt$convergence,
+    counts = opt$counts,
+    message = opt$message
+  )
 }
 
 
@@ -299,15 +307,37 @@ gp_predict <- function(xstar, X_train, y_train, ell, sigma2, tau2, nugget = TRUE
   alpha <- NULL
   success <- FALSE
 
+  # for(j in jitter_values){
+  #   Kj <- K
+  #   if(j > 0){
+  #     Kj <- Kj + diag(j, nrow(Kj))
+  #   }
+  #
+  #   attempt <- try(solve(Kj, y_train), silent = TRUE)
+  #   if(!inherits(attempt, "try-error") && all(is.finite(attempt))){
+  #     alpha <- attempt
+  #     success <- TRUE
+  #     break
+  #   }
+  # }
   for(j in jitter_values){
     Kj <- K
     if(j > 0){
       Kj <- Kj + diag(j, nrow(Kj))
     }
 
-    attempt <- try(solve(Kj, y_train), silent = TRUE)
-    if(!inherits(attempt, "try-error") && all(is.finite(attempt))){
-      alpha <- attempt
+    L <- try(chol(Kj), silent = TRUE)
+    if(inherits(L, "try-error")) next
+
+    alpha_try <- try(backsolve(L, forwardsolve(t(L), y_train)), silent = TRUE)
+    v_try <- try(backsolve(L, forwardsolve(t(L), Ks)), silent = TRUE)
+
+    if(!inherits(alpha_try, "try-error") &&
+       !inherits(v_try, "try-error") &&
+       all(is.finite(alpha_try)) &&
+       all(is.finite(v_try))){
+      alpha <- alpha_try
+      v <- v_try
       success <- TRUE
       break
     }
